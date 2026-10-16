@@ -1,0 +1,142 @@
+---
+title: Where files are kept
+description: A folder on disk by default, or as many buckets as you want
+icon: HardDrive
+---
+
+Uploaded files go into a folder on disk. On first start the instance creates one storage backend called `default`, pointing at `blobs` inside `server.data_dir`, and sends every upload there. For one person on their own hardware that is the whole answer.
+
+In the Docker image `server.data_dir` is `/data`, so mounting that volume keeps the files across a rebuild.
+
+## Adding somewhere else
+
+Backends are managed in the admin panel. Each one has a name, an address, an optional capacity, a read-only switch, and a switch for sending browsers to it directly. Add a bucket, make it the default, and the folder stops taking new uploads; it is not created again on the next start.
+
+<Callout type="error" title="The address goes in sealed and never comes back out">
+It carries the credential, so it is encrypted with `security.secret_key` before it is stored, and no request reads it back. Lose that key and every backend has to be entered again. See [configuration](/en/docs/configuration#the-key-that-seals-credentials).
+</Callout>
+
+Adding one under a name that already exists replaces it.
+
+### Which one a file goes to
+
+The default backend takes a file whenever it fits, because an operator who picked one meant it. Only when it cannot does the rest of the pool come into play, and then the tightest fit wins.
+
+Marking a backend read-only stops it taking new content without touching what it already holds, which is what you want before retiring one.
+
+<Mermaid
+  chart="
+flowchart TD
+  A[New file] --> B{Fits in the default?}
+  B -->|Yes| C[Default backend]
+  B -->|No| D{Another one fits?}
+  D -->|Yes| E[The tightest fit]
+  D -->|No| F{Splitting on?}
+  F -->|Yes| G[Split across backends]
+  F -->|No| H[Rejected]
+"
+/>
+
+### A file bigger than any one of them
+
+Off by default. Turned on, a file that no single backend can take whole is split across several. Five free 10 GB buckets take a 40 GB file with it on, and refuse it without.
+
+Ordinary uploads are not spread around. A file is split only when nothing can take it whole.
+
+A split file comes back through this server, unless every backend holding a piece has direct access on; then the browser fetches the pieces itself and joins them. On free tiers, going through the server costs upload and download bandwidth separately.
+
+### When you would want more than one
+
+- The machine's disk is small or expensive, and a bucket is not.
+- More than one instance has to see the same files.
+- You already run something like Garage or MinIO and would rather have one place to back up.
+
+Otherwise a folder is simpler, faster, and one less thing that can be misconfigured.
+
+## Retiring one
+
+Mark a backend read-only and new content goes elsewhere, while what it already holds is still served. It can be removed once nothing is stored on it, which happens as its shares die and the sweep clears them.
+
+<Callout type="warn" title="A backend that still holds files cannot be removed">
+The panel and the command line both refuse, and say how many files are left. Retire it first and wait for it to empty.
+</Callout>
+
+## From the command line
+
+`tessera-server backends` does the same as the panel, and works with the service stopped.
+
+```bash
+tessera-server backends list
+tessera-server backends add archive s3://my-bucket
+tessera-server backends default archive
+tessera-server backends capacity archive 10000000000
+tessera-server backends retire default
+tessera-server backends remove default
+```
+
+`list` never shows credentials. `capacity` is in bytes, `0` for no limit. `retire` is the read-only switch. A running server picks these changes up only on its next start.
+
+## What goes in the address
+
+| Store | Address | Notes |
+|---|---|---|
+| A folder on disk | `data/blobs` | The default |
+| Garage, RustFS, MinIO, VersityGW | `s3://bucket` | |
+| SeaweedFS | `s3://bucket` | Refuses every write without an `-s3.config` identities file |
+| s3proxy | `s3://bucket` | Needs a build newer than 2.6.0 |
+| Azure Blob | `azure://container` | |
+| WebDAV | `https://host/path` | Small files only, see below |
+| Google Cloud Storage | `gs://bucket` | Untested, see below |
+
+Anything a provider needs on top of the address, such as an endpoint, a region or `allow_http` for a store on plain HTTP, goes in that backend's options.
+
+Every store in the table but the last has the test suite run against it on every change. AWS S3, Cloudflare R2 and Backblaze B2 speak the same S3 API and are checked by a separate job that runs when credentials are provided.
+
+<Callout type="error" title="WebDAV only takes files under 64 KiB">
+WebDAV's one way to upload is a single whole-body request, and anything above `share.inline_threshold_bytes` is written a piece at a time. A larger file is refused outright rather than failing halfway. Use it for notes and small files, or not at all.
+</Callout>
+
+<Callout type="warn" title="Google Cloud Storage is compiled in and untested">
+No emulator implements what the library uses for writes, so nothing here proves it works. If you are the first to use it, upload a large file, download it, delete it, and check the bucket before trusting it with anything.
+</Callout>
+
+## Letting browsers go straight to the bucket
+
+On an S3 or Google Cloud Storage backend you can switch on direct access. Then large uploads go from the browser to the bucket without passing through this server, and some downloads are handed a link that lasts fifteen seconds instead of being streamed.
+
+Downloads only go direct when all of this holds: the share has no password and no limit on collections, it is a single file, and the bucket can be reached from the visitor's browser. Anything else is served by the instance as before, and every download still passes the same checks first.
+
+The bucket needs a CORS rule that lets the browser upload to it. Without one, the browser falls back to sending through the server, which works but saves nothing.
+
+## One rule to set on S3
+
+An upload that is started and then abandoned leaves pieces in the bucket. tessera clears the ones it can find, but if that fails S3 keeps them forever and bills for them, and they show up in no listing of your files.
+
+<Callout type="error" title="Set an AbortIncompleteMultipartUpload lifecycle rule">
+A few days longer than `share.upload_session_ttl_hours`. Every S3 provider supports it, and without it a bucket can quietly grow.
+</Callout>
+
+## What ends up in the bucket
+
+One object per file, filed under a year, a month and a random identifier, so no name or address appears in a path. Text shares are not here at all; they live in the database.
+
+A periodic check compares what the stores hold against what is recorded, across every backend, and removes objects nothing points at any more.
+
+<Accordions>
+<Accordion title="Building a smaller binary">
+
+Each kind of store is a compile-time option, and all of them are on in the published image. Building from source for an instance that only ever uses a folder:
+
+```bash
+cargo build --no-default-features --features sqlite,storage-fs,email
+```
+
+</Accordion>
+</Accordions>
+
+## Next
+
+<Cards>
+  <Card title="Shares" href="/en/docs/shares" description="What is stored, and how long it stays" />
+  <Card title="Administration" href="/en/docs/administration" description="Backends, roles and quotas" />
+</Cards>

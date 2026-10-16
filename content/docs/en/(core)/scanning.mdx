@@ -1,0 +1,69 @@
+---
+title: Virus scanning
+description: Hand uploads to a scanner before anyone can collect them. Off by default
+icon: ShieldAlert
+---
+
+Uploads can be checked by an outside scanner before they are handed out. Off by default; it turns on when `scan.url` is set.
+
+```
+clamd://clamav:3310
+https://scanner.example.com/scan
+```
+
+A `clamd://` address talks to ClamAV directly. An `http(s)://` address is any service you put in front of a scanner; its authorization header, if it needs one, is a sealed credential like the rest.
+
+## What a visitor sees
+
+<Mermaid
+  chart="
+flowchart LR
+  A[upload finishes] --> B[waiting for the scanner]
+  B -->|clean| C[can be collected]
+  B -->|infected| D[share disabled]
+  B -->|scanner down| E[let through<br/>scanned again later]
+"
+/>
+
+Until the scan finishes, the share can be opened but not collected, and nothing is spent by trying. The command-line client waits on its own, for up to five minutes.
+
+A file found infected disables the whole share, exactly as if an administrator had. The threat's name is kept and shown in the admin panel's share list.
+
+The person who uploaded sees the scan's progress and result on the page shown after uploading and in their list of shares. A share disabled for a threat says so there, rather than looking expired.
+
+## When the scanner is down
+
+<Callout type="error" title="Scanning fails open">
+If the scanner cannot be reached, times out or answers with an error, the waiting files are let through rather than held. They are scanned again every thirty seconds or whenever a new upload arrives, and one found infected later is disabled then. Files collected in the meantime were collected unscanned.
+</Callout>
+
+
+The admin panel shows whether the scanner answered the last time it was called, why not when it failed, and how many files are waiting or were let through unscanned. An idle scanner is sent an empty file every fifteen minutes and a failing one every five, so this stays current when nobody uploads.
+
+Turning scanning off releases everything still waiting.
+
+## What is not scanned
+
+- **End-to-end encrypted shares.** The scanner could only see sealed bytes.
+- **Files larger than the scanner accepts.** ClamAV has its own size limit; a file over it is let through and marked as too large rather than refused.
+- **Link shares**, which hold an address and no file.
+
+## Writing an HTTP adapter
+
+For a scanner that is not ClamAV, the HTTP service receives the file as the body of a `POST`, streamed, and answers:
+
+| Answer | Means |
+|---|---|
+| `200 {"clean": true}` | Clean |
+| `200 {"clean": false, "threat": "…"}` | Infected |
+| `413` | Too large to scan |
+| anything else, or no answer | The scanner is down |
+
+Four files are scanned at a time.
+
+## Next
+
+<Cards>
+  <Card title="Shares" href="/en/docs/shares" description="Collecting, and what holds it up" />
+  <Card title="Administration" href="/en/docs/administration" description="Where disabled shares show up" />
+</Cards>

@@ -1,0 +1,171 @@
+---
+title: 設定
+description: 設定の出どころと、どれが優先されるか
+icon: Settings
+---
+
+設定の置き場所は二つあり、重なりません。
+
+- **環境変数**には、プロセスの実行中に変えられないものと、データベースに入れてはいけない少数のシークレットを置きます。
+- **管理画面**(`/admin/`)には、それ以外のすべてを置きます。データベースに保存され、再起動なしで反映されます。
+
+管理画面にある設定は、変えれば効きます。再起動が必要な設定は、理由と一緒に読み取り専用で表示されます。
+
+<Callout type="error" title="設定ファイルはない">
+`tessera.yaml` も `tessera.toml` も読みません。`TESSERA_CONFIG_FILE` を設定したままのインスタンスも起動はしますが、警告をログに出し、ファイルの中身は無視します。
+</Callout>
+
+## 環境変数で設定するもの
+
+**起動時に決まるもの。** ソケットはもう開いていて、接続プールももう作られ、ログの購読者も一度だけ組み込まれます。
+
+- `server.host`、`server.port`、`server.data_dir`、`server.max_body_bytes`、`server.cors_allowed_origins`、`server.assets_dir`
+- `features.docs`
+- `database.` と `telemetry.` の下のすべて
+
+**データベースに入れてはいけないシークレット。**
+
+- `database.url`、`auth.admin_password`、`security.secret_key`
+
+ほかはすべて、インスタンスを動かしたまま変えられます。
+
+## 管理画面に置く認証情報
+
+メール中継の認証情報、スキャナーの認可ヘッダー、外部ログインのクライアントシークレット、ストレージバックエンドのアドレスは、ほかの設定と同じく管理画面で設定します。管理画面は設定済みかどうかは教えますが、値を二度と表示しません。設定を読める人でも、そこからパスワードは読めません。
+
+### 認証情報を封印する鍵
+
+これらの認証情報は暗号化して保存されます。鍵は `security.secret_key` です。空にしておくと、インスタンスが初回起動時に生成し、`server.data_dir` に `secret.key` として保存します。
+
+<Callout type="error" title="鍵をなくすと、封印した認証情報はすべて失われる">
+鍵がなければ、データベースのバックアップがあってもこれらの値は使えません。鍵なしで新しいマシンに復元すると、バックエンドとシークレットをすべて入れ直すことになります。`secret.key` はデータベースと一緒にバックアップするか、`TESSERA_SECURITY__SECRET_KEY`(`openssl rand -hex 32`)を設定して、バックアップとは別の場所に保管してください。
+</Callout>
+
+## 環境変数の書き方
+
+```bash
+TESSERA_SERVER__PORT=9000
+TESSERA_DATABASE__URL=postgres://…
+```
+
+接頭辞は `TESSERA_`、階層はアンダースコア二つでつなぎます。リストはカンマ区切りか JSON 配列で書きます。
+
+```bash
+TESSERA_SERVER__CORS_ALLOWED_ORIGINS='https://a.example, https://b.example'
+TESSERA_SERVER__CORS_ALLOWED_ORIGINS='["https://a.example","https://b.example"]'
+```
+
+設定にないキーがあると、無視せずにプロセスが止まります。打ち間違いは起動時にわかります。
+
+systemd なら、`EnvironmentFile=` でファイルを指定できます。リポジトリの `contrib/tessera.service` がそのまま使えるユニットです。
+
+メインのリポジトリに、出発点になるファイルが二つあります。自分と信頼できる人だけが使うインスタンスなら [`tessera.personal.env.example`](https://github.com/Limatura/tessera/blob/main/tessera.personal.env.example)、知らない人もアップロードできるインスタンスなら [`tessera.public.env.example`](https://github.com/Limatura/tessera/blob/main/tessera.public.env.example) です。中のコメントは中国語です。
+
+## それ以外を変える
+
+同じ保存先に入る方法が三つあります。
+
+<Tabs items={["管理画面", "コマンドライン", "API"]}>
+<Tab value="管理画面">
+
+すべての設定が、今効いている値と、その出どころと一緒に並びます。環境変数でしか設定できないものは読み取り専用です。
+
+</Tab>
+<Tab value="コマンドライン">
+
+```bash
+tessera-server settings list
+tessera-server settings set share.code_length 10
+tessera-server settings reset share.code_length
+```
+
+`set` は JSON を受け取るので、引用符のない単語は文字列として読みます。`reset` は保存した値を消して、下の層に決めさせ直します。管理画面をオフにしているときに使います。
+
+動いているサーバーに反映されるのは、次に起動したときです。`settings reset-all` は保存した値をすべて消します。管理画面の操作でインスタンスが使えなくなったときは、これで戻します。
+
+</Tab>
+<Tab value="API">
+
+`GET /api/v1/admin/settings` はすべての設定を、`source` と、変えられない場合はその理由と一緒に返します。変更は `PUT` で反映します。
+
+</Tab>
+</Tabs>
+
+## どれが優先されるか
+
+低い順に、**組み込みのデフォルト、環境変数、保存した設定**です。
+
+<Callout title="保存した設定は環境変数より強い">
+このインスタンスで誰かがわざわざ編集したのは、この層だけです。コンテナイメージは自前の変数を設定するので、そちらを勝たせると、管理画面は「保存しました」と言うだけで何も変わらない画面になります。
+</Callout>
+
+ダウングレードや誤った編集で、このバージョンが受け付けない値が保存されていると、その値はキーごとに捨てられてログに残ります。代わりに下の層が決め、ほかの設定はそのまま残ります。
+
+<Callout type="warn" title="何かを消してしまう変更もある">
+保持期間を短くすると、新しい線より古いものは捨てられます。管理画面は、どれだけ消えるかを先に示し、確認するまで反映しません。
+</Callout>
+
+<Mermaid
+  chart="
+flowchart LR
+  A[組み込みの既定値] -->|上書きされる| B[環境変数]
+  B -->|上書きされる| C[管理画面に保存した値]
+  C --> D[実際に効く値]
+"
+/>
+
+## 最初に見直す設定
+
+<TypeTable
+  type={{
+    "server.host": {
+      type: "IP",
+      default: "127.0.0.1",
+      description: "環境変数のみ。イメージではすでに 0.0.0.0",
+    },
+    "server.port": { type: "number", default: "12923", description: "環境変数のみ" },
+    "server.data_dir": {
+      type: "path",
+      default: "data",
+      description: "環境変数のみ。secret.key と最初のバックエンドのフォルダの置き場所。イメージでは /data",
+    },
+    "server.public_url": {
+      type: "URL",
+      default: "(リクエストごとに判断)",
+      description: "外から見たインスタンスのアドレス。外部ログインはこれがないと動かない。リンクプレビューが空になるときも設定する",
+    },
+    "auth.registration": {
+      type: "open | invite | closed",
+      default: "open",
+      description: "invite は管理者が発行したコードが必要",
+    },
+    "auth.default_role": {
+      type: "string",
+      default: "member",
+      description: "新しいアカウントのロール。存在しないロールだとサーバーが起動しない",
+    },
+    "auth.session_ttl_hours": { type: "number", default: "720", description: "30 日" },
+    "features.anonymous_upload": {
+      type: "boolean",
+      default: "true",
+      description: "公開インスタンスでは storage.max_total_bytes も一緒に設定する",
+    },
+    "features.encryption": {
+      type: "boolean",
+      default: "false",
+      description: "エンドツーエンド暗号化した共有を受け付ける",
+    },
+    "features.docs": {
+      type: "boolean",
+      default: "false",
+      description: "環境変数のみ。API を閲覧するページ。画面のファイルはブラウザが CDN から取得する",
+    },
+    "share.code_length": { type: "number", default: "8" },
+  }}
+/>
+
+<Callout type="error" title="容量制限なしの匿名アップロード">
+`features.anonymous_upload` が有効で `storage.max_total_bytes` が未設定だと、インスタンスに届く人なら誰でもディスクを埋められます。起動時に警告が出ます。
+</Callout>
+
+`server.request_timeout_secs` はアップロードには効きません。一つの時間枠では、5 GB のアップロードを最後まで通すことと、接続して何も送らないクライアントを止めることを両立できません。そのためアップロードには代わりに `server.upload_stall_secs` が効きます。1 バイトも届かないまま待てる時間です。

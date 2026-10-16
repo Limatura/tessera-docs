@@ -1,0 +1,48 @@
+---
+title: 关于这一节
+description: 端点参考是从契约生成的
+icon: Braces
+---
+
+下面的端点页是从 tessera 的 `openapi.json` 生成的,所以是英文,而且跟着后端走。契约本身也是生成的,CI 会比对生成结果和提交进去的有没有差,所以它不会落后于代码。
+
+## 拿契约
+
+server 无条件在 `/openapi.json` 发出契约,不需要开任何配置。要生成 client 就请求这条。
+
+```bash
+curl http://localhost:12923/openapi.json
+```
+
+`features.docs` 是另一回事,它只决定要不要在 `/docs` 多挂一个浏览用的 UI,默认关着。关掉不会让契约消失。
+
+<Callout type="warn" title="那个 UI 的界面是去 CDN 拿的">
+  `features.docs` 开着的时候,`/docs` 那页的 JavaScript 是浏览器向外部 CDN
+  要的。完全离线的环境会看到空白页。
+</Callout>
+
+## 认证
+
+三种,端点页上会标。
+
+| 方式 | 怎么带 |
+| --- | --- |
+| session | `POST /api/v1/auth/login` 设的 `tessera_session` cookie。`HttpOnly`,页面上的 script 读不到也设不了 |
+| bearer | 在账号页或用 `POST /api/v1/tokens` 生成的 `tsk_` 开头令牌,放 `Authorization: Bearer` |
+| 不用 | 公开端点。上传在 `features.anonymous_upload` 开着时也算 |
+
+## 令牌能做什么
+
+令牌有自己的权限,实际生效的是令牌和它主人的交集。主人被降权,他手上的令牌同一刻就跟着窄掉。
+
+创建时不带 `permissions` 只会拿到 `shares:create`,不是「这个账号能做的全部」。令牌是拿来上传的,默认给整个账号的话,每一个截图工具和备份脚本都能删掉主人的所有东西。
+
+要一个调用者自己没有的权限会被回 `403`。
+
+<Callout type="error" title="API 令牌只出现一次">
+  创建时返回一次,之后只留哈希。丢了就撤销掉再开一个。
+</Callout>
+
+## 不在这里的东西
+
+`/s/<码>/raw` 和 `/s/<码>/download` 不在契约里。那两条是链接指向的地方,不是 API,而且形状不能再改,有人会把它贴进聊天室、打印出来、丢给 `curl`。用法见[分享](/zh-CN/docs/shares#取件)。

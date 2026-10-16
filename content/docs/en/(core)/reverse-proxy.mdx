@@ -1,0 +1,85 @@
+---
+title: Reverse proxy
+description: What to set behind nginx / Caddy / Cloudflare
+icon: Network
+---
+
+Behind a reverse proxy, the source address tessera sees is the proxy's, not the visitor's.
+
+<Callout type="error" title="Without this, throttling stops working">
+  Failed logins, code enumeration, share password attempts and mail sending are
+  all counted per source address. Record everyone as the proxy's single address
+  and one person guessing ten passwords locks out everybody on the instance.
+</Callout>
+
+Set `server.trusted_proxies` to the proxy's address, in the admin panel or as an environment variable:
+
+```bash
+TESSERA_SERVER__TRUSTED_PROXIES='127.0.0.1, ::1'
+```
+
+Only connections coming from an address on the list get their `X-Forwarded-For` believed. An empty list, which is the default, believes nobody.
+
+<Callout type="warn" title="List the proxy's address, not the visitor's">
+  A proxy on the same host is `127.0.0.1`. In docker compose it is the network,
+  for example `172.18.0.0/16`. CIDR blocks and bare addresses are both accepted.
+</Callout>
+
+<Mermaid
+  chart="
+flowchart LR
+  V[Visitor] -->|request| P[Reverse proxy]
+  P -->|adds X-Forwarded-For| T[tessera]
+  T --> L[Throttles count per visitor address]
+"
+/>
+
+## How it picks the visitor
+
+`X-Forwarded-For` is a list, and proxies like nginx **append** what they see. The real visitor is therefore on the right, and everything to the left was written by an earlier hop, including whatever the visitor wrote themselves.
+
+Starting at the connection peer and walking left, the first address not on the list is the visitor. Everything left of it is discarded:
+
+<Mermaid
+  chart="
+flowchart RL
+  A[10.0.0.9<br/>connection peer] --> B{in trusted_proxies?}
+  B -->|yes, our proxy| C[203.0.113.9]
+  C --> D{in trusted_proxies?}
+  D -->|no| E[this one<br/>discard the rest]
+"
+/>
+
+So a visitor sending their own `X-Forwarded-For: 1.2.3.4` achieves nothing. The proxy appends after it, and this step throws it away.
+
+<Callout type="error" title="Never write 0.0.0.0/0">
+That believes everybody, and it is worse than leaving it unset: every hop counts as ours, so the walk reaches the leftmost entry, which is the one the visitor wrote. A new address each request means the throttle never accumulates anything. Start-up warns about it.
+
+With no reverse proxy in front, leave this setting alone.
+
+</Callout>
+
+## The old trusted_proxy
+
+`trusted_proxy: true` still works and warns at start-up. It means "believe whatever connects to us", so if visitors can reach the port directly there is effectively no throttling.
+
+Replace it with `trusted_proxies` and the proxy's address.
+
+## When server.host is ::
+
+A socket bound to `::` sees IPv4 peers as something like `::ffff:127.0.0.1`. Addresses are normalised back to `127.0.0.1` before comparison, so write `127.0.0.1` in the list as usual.
+
+## HTTPS
+
+`auth.cookie_secure` defaults to `auto`: the session cookie is marked `Secure` only when a trusted proxy sent `X-Forwarded-Proto: https`.
+
+With `trusted_proxies` wrong, the cookie is not marked `Secure` even though the outside of the connection is HTTPS.
+
+<Callout type="warn" title="cookie_secure set to always over plain HTTP">
+  The browser accepts the response and drops the cookie. Signing in appears to
+  succeed and then nothing happens, with no error anywhere.
+</Callout>
+
+## The address people see
+
+Set `server.public_url` to the address people type, such as `https://files.example.com`. Without it the instance works the address out from each request, which goes wrong behind a proxy that rewrites `Host`: link previews come out blank, and [signing in with another account](/en/docs/sign-in) refuses to start at all.

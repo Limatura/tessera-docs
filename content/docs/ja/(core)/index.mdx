@@ -1,0 +1,211 @@
+---
+title: はじめに
+description: 起動して、サインインする
+icon: Rocket
+---
+
+tessera はセルフホストのファイル受け渡しツールです。ファイルをアップロードして受け取りコードをもらい、必要な人にそのコードを渡します。
+
+<Shots>
+  <Shot name="home" alt="アップロード画面">
+    アップロード画面:ファイルをドロップ、テキストを貼る、リンクを追加
+  </Shot>
+  <Shot name="result" alt="アップロード後の画面">
+    アップロード後:リンク、QR コード、期限
+  </Shot>
+</Shots>
+
+## 起動する
+
+<Steps>
+<Step>
+
+### イメージを pull する
+
+```bash
+docker pull ghcr.io/limatura/tessera:latest
+```
+
+`:latest` は最新のリリース、`:sha-<commit>` は特定のビルドに固定します。amd64 と arm64 の両方を公開しているので、Raspberry Pi や NAS でも動きます。
+
+自分でビルドする場合は `docker build -f apps/server/Dockerfile -t tessera .` を実行します。フロントエンドも一緒に組み込まれます。
+
+</Step>
+<Step>
+
+### 起動する
+
+<Tabs items={["docker run", "Docker Compose", "Compose 5.3+"]}>
+<Tab value="docker run">
+
+```bash
+docker run -p 12923:12923 -v tessera-data:/data ghcr.io/limatura/tessera:latest
+```
+
+データは `tessera-data` という named volume に保存されます。Docker が初回起動時に作成し、サーバーはすでに書き込めます。保存先のディレクトリを自分で決めたい場合は、Docker Compose タブを使ってください。
+
+</Tab>
+<Tab value="Docker Compose">
+
+`compose.yaml` として保存します:
+
+```yaml
+services:
+  init-data:
+    image: busybox:1.37
+    command: chown -R 65532:65532 /data
+    volumes:
+      - ./data:/data
+
+  tessera:
+    image: ghcr.io/limatura/tessera:latest
+    depends_on:
+      init-data:
+        condition: service_completed_successfully
+    ports:
+      - "12923:12923"
+    volumes:
+      - ./data:/data
+    init: true
+    restart: unless-stopped
+```
+
+バックグラウンドで起動します:
+
+```bash
+docker compose up -d
+```
+
+あとで更新するには `docker compose pull && docker compose up -d` を実行します。
+
+ボリュームは compose ファイルの隣の `./data` です。Tessera は非 root ユーザー(uid 65532)で動くため、一回限りの `init-data` サービスが先に root でこのディレクトリを渡して終了し、Tessera はその完了を待ちます。`up` のたびに再実行され、root になるのはこの使い捨てコンテナだけです。
+
+`./data` が `root_squash` 付きの NFS 上にある場合、`chown` は失敗します。その場合は named volume(`tessera-data:/data` と、トップレベルの `volumes: {tessera-data: {}}`)を使うか、`tessera` に `user: "<uid>:<gid>"` を設定してディレクトリの所有者に合わせてください。
+
+</Tab>
+<Tab value="Compose 5.3+">
+
+Docker Compose 5.3 以降では、`pre_start` を使って 1 つのサービスで同じことができます。`docker compose version` で確認してください。古いバージョンでは `additional properties 'pre_start' not allowed` というエラーでファイルが拒否されます。
+
+```yaml
+services:
+  tessera:
+    image: ghcr.io/limatura/tessera:latest
+    ports:
+      - "12923:12923"
+    volumes:
+      - ./data:/data
+    init: true
+    restart: unless-stopped
+    pre_start:
+      - image: busybox
+        user: root
+        command: chown -R 65532:65532 /data
+```
+
+定義が変わらない限り、次回以降の `up` では `pre_start` のステップはスキップされます。
+
+</Tab>
+</Tabs>
+
+</Step>
+<Step>
+
+### ログから管理者パスワードを取る
+
+イメージのログは JSON で、1 行に 1 オブジェクトです。次のコマンドで探せます。
+
+```bash
+docker logs <container> 2>&1 | grep password
+```
+
+Compose の場合は `docker compose logs tessera 2>&1 | grep password` を使います。
+
+該当する行は次のとおりです。
+
+```json
+{
+  "timestamp": "…",
+  "level": "WARN",
+  "message": "created the first administrator with a generated password; sign in and change it",
+  "username": "admin",
+  "password": "1e3bc629…",
+  "target": "tessera_server::auth::bootstrap"
+}
+```
+
+<Callout type="warn" title="この行は一度しか出ません">
+  再起動しても二度と表示されません。見逃したら
+  [`reset-password`](/ja/docs/accounts#コマンドラインから)
+  で新しく設定してください。
+</Callout>
+
+</Step>
+<Step>
+
+### サインインして、パスワードを変える
+
+変えるまで、ほかの操作はすべてできません。
+
+</Step>
+</Steps>
+
+## /data に入るもの
+
+<Files>
+  <Folder name="data" defaultOpen>
+    <File name="tessera.db" />
+    <File name="secret.key" />
+    <Folder name="blobs">
+      <File name="01K1ZQK9V8…" />
+    </Folder>
+  </Folder>
+</Files>
+
+`blobs` には、ほかの保存先を追加するまでアップロードされた中身が入ります。`secret.key` はデータベースに保存する認証情報を暗号化します。ストレージバックエンドのアドレス、メールのパスワード、外部ログインのシークレットなどです。
+
+<Callout type="error" title="secret.key はデータベースと一緒にバックアップする">
+  これなしで復元したデータベースも開きはしますが、封印された認証情報はすべて読めなくなり、入力し直しになります。[設定](/ja/docs/configuration#認証情報を封印する鍵)を見てください。
+</Callout>
+
+設定はボリュームには入りません。環境変数と管理画面から読み込みます。管理画面は同じアドレスの `/admin/` にあります。
+
+<Callout type="warn">
+  `/data`
+  にボリュームをマウントしないと、コンテナを作り直したときにすべて消えます。
+</Callout>
+
+## 次に読む
+
+<Cards>
+  <Card
+    title="共有"
+    href="/ja/docs/shares"
+    description="アップロード、受け取りコード、回数と期限"
+  />
+  <Card
+    title="設定"
+    href="/ja/docs/configuration"
+    description="設定の出どころと、どれが優先されるか"
+  />
+  <Card
+    title="リバースプロキシ"
+    href="/ja/docs/reverse-proxy"
+    description="nginx / Caddy / Cloudflare の後ろに置く前に読む"
+  />
+  <Card
+    title="アカウント"
+    href="/ja/docs/accounts"
+    description="登録のルール、パスワードを忘れたとき"
+  />
+  <Card
+    title="メール"
+    href="/ja/docs/email"
+    description="任意。有効にすると登録の流れが変わる"
+  />
+  <Card
+    title="API"
+    href="/ja/docs/api"
+    description="契約から生成したエンドポイントのリファレンス"
+  />
+</Cards>

@@ -1,0 +1,273 @@
+---
+title: Shares
+description: What a share is, how long it lasts, and how many times it can be collected
+icon: Share2
+---
+
+A share is one piece of text, or one or more files, plus a retrieval code. Hand out the code and the recipient collects it at `/s/<code>`.
+
+Nothing about a share is permanent. It expires, it can be limited to a number of collections, and both are decided when it is created or changed afterwards.
+
+<Shots>
+<Shot name="result" alt="The page shown after uploading">What the sender gets: a link, a QR code, expiry and burn-after-reading</Shot>
+<Shot name="share" alt="The share page">What the recipient sees</Shot>
+</Shots>
+
+## Sending something
+
+A share holds text, files, or a link. They are kept differently and behave differently.
+
+**Text** lives in the database whatever its size, up to `share.max_text_bytes`, a megabyte by default. Past that the upload is refused and you are told to send it as a file instead. A megabyte is about a million characters, so anything that does not fit is not a paste.
+
+**Files** are stored as objects whatever their size, up to `server.max_body_bytes`, 100 MiB by default. One share can hold several. A role or a single account can be given a smaller limit per file; see [quota](#quota).
+
+**A link** is an address that opening the share sends people on to. Only `http` and `https` addresses are accepted. Passwords, expiry and collection limits work as for anything else, and the destination never learns the retrieval code, because the redirect sends no referrer.
+
+<Callout title="A limited link waits for a click">
+A link share with no password and no limit sends visitors straight on. One limited to a number of collections shows a page first and waits for a click, because chat apps fetch a pasted link the moment it is pasted, and that would spend a one-time link before anybody opened it.
+</Callout>
+
+Any of them can be [end-to-end encrypted](/en/docs/encryption) except a link, which the server has to be able to read to redirect.
+
+### Several files, and folders
+
+A share is made by its first file and grown by the rest, one at a time. There is no draft to finish, so an upload interrupted half way leaves a share holding what did arrive rather than nothing at all.
+
+<Callout type="warn" title="The link works during the upload">
+Somebody who opens it before you finish sees a partial share. Hand the link out afterwards.
+</Callout>
+
+File names may carry a path, which is how a folder keeps its shape. Every segment is cleaned and the result is always a relative path that cannot climb out of the archive:
+
+| Sent | Stored |
+|---|---|
+| `holiday/2024/photo.jpg` | unchanged |
+| `../../etc/passwd` | `etc/passwd` |
+| `/etc/passwd` | `etc/passwd` |
+| `a\b\c.txt` | `a/b/c.txt` |
+
+Backslashes count as separators, and the characters Windows refuses go with them. Two files in different folders are two files, so `a/photo.jpg` and `b/photo.jpg` both survive.
+
+### Large files
+
+Uploads resume. If the connection drops, the transfer picks up from the last complete block rather than starting again, and at most one block is ever re-sent.
+
+An upload that is started and abandoned holds real space at the store and counts against the quota. It is cleared after `share.upload_session_ttl_hours`, a day by default.
+
+<Callout type="warn" title="On S3, set a lifecycle rule as well">
+tessera clears the ones it can find, but if that fails S3 keeps them and bills for them. See [where files are kept](/en/docs/storage#one-rule-to-set-on-s3).
+</Callout>
+
+## Retrieval codes
+
+Eight characters by default, from an alphabet without `I`, `L`, `O` or `U`. The first three because they are what people confuse with `1`, `1` and `0`; `U` because without it a generated code cannot spell most of the words nobody wants on their screen.
+
+Codes read aloud and typed back are corrected automatically. `ozpq0123`, `OZPQ0123` and `0ZPQ-0123` all reach the same share: case, hyphens, underscores and spaces are all handled, and `O` and `I` become `0` and `1`.
+
+`share.code_length` accepts 4 to 32. Eight characters is about 1.1 × 10¹² combinations.
+
+<Callout type="error" title="Know what the throttle does before shortening it">
+Four characters is a million combinations. One source gets 60 failed lookups a minute before it is refused, which turns a sweep into about eleven days. Behind a proxy with `trusted_proxies` unset, every request counts against the proxy's single address and the throttle does nothing. See [reverse proxy](/en/docs/reverse-proxy).
+</Callout>
+
+An unknown code and a malformed one look the same from outside. Telling them apart would say which shapes are worth trying.
+
+## Collecting
+
+Opening `/s/<code>` shows what the share is without spending anything. A link preview, a browser prefetch or a mail scanner following the URL cannot destroy a one-time share.
+
+Collecting it is what costs one of its permitted retrievals, and the count is charged once for the whole transfer. A download is not one request. A resumed transfer and a retry after a dropped connection are more, and none of that costs extra.
+
+<Callout title="Authorisation lasts as long as the transfer does">
+What expires it is going unused, not elapsed time: an hour idle by default, pushed out again every time it is presented. A transfer still running keeps its authorisation for as long as it needs; one that finished is dead within the hour. `share.ticket_ttl_hours` is the ceiling on top of that, a day by default.
+
+A fixed life would have to be long enough for the slowest link to finish the largest file, which is exactly long enough for the authorisation to be worth passing to somebody else.
+</Callout>
+
+If the instance [scans uploads](/en/docs/scanning), a share cannot be collected until its files are checked, and trying spends nothing.
+
+A text share downloads as a plain text file named after its title, or its code when it has none.
+
+A share with several files arrives as one archive. `zip` is the default and the only container every desktop opens unaided; `tar` and `7z` are available for a client that offers the choice. One file is served as that file.
+
+<Callout type="warn" title="Uploaded content is never served as the type it claimed">
+The media type is recorded and never echoed back. Serving it would turn a `text/html` upload into stored XSS on the origin that holds everyone's session cookie.
+</Callout>
+
+## Passwords
+
+A share can carry a password, four characters minimum. That is lower than an account password needs, because it is a second lock on a link that is already unguessable, and it is often read out over the phone.
+
+A locked share tells a visitor only that it exists and wants a password. The file name, the size and the expiry stay hidden until the password is given, since all three describe the content.
+
+Too many wrong guesses against the same code from the same source is refused for a while.
+
+## How long, and how many times
+
+<Mermaid
+  chart="
+flowchart LR
+  A[Live] --> B[Expired or used up]
+  B --> C[Next sweep<br/>content removed]
+  C --> D[After retain_after_death_hours<br/>the link stops existing]
+"
+/>
+
+A share lasts a week unless it was given a different lifetime, and at most thirty days. It can also be limited to a number of collections; one collection makes it burn-after-reading.
+
+A dead share does not vanish immediately. While the record is there, following the link says "this expired" rather than "no such code", which are different things to tell a person and only one of them is worth retyping. The content itself goes on the first sweep after death, so a burn-after-reading share does not sit on its full size for a week after the one person who was meant to have it already did.
+
+The sweep runs hourly.
+
+<Accordions>
+<Accordion title="What happens if a share expires mid-transfer">
+
+It stops there. Authorisation covers "used up" and nothing else.
+
+Running out is the collection you already paid for coming back around. An expiry is the sender having said "not after this", and a disable is an operator having said "not any more". Neither is outranked.
+
+</Accordion>
+</Accordions>
+
+### Changing one afterwards
+
+A share that already exists can be given a new lifetime, a new number of remaining collections, or have its password removed. The content and the code do not change.
+
+The count is from now, not from the beginning. Setting it to one on a share collected twice already leaves one collection, not none.
+
+## Where the content lives
+
+Text is a row in the database, so a database backup is also a backup of it. Files are stored one object each, filed under a year, a month and a random identifier. See [where files are kept](/en/docs/storage).
+
+## Quota
+
+There are three ceilings, and the tightest one that applies wins.
+
+- **The instance.** `storage.max_total_bytes`, unset by default.
+- **A role.** How much everybody in it may store between them, and how large one file may be.
+- **One account.** Either limit can be overridden for a single person.
+
+All of them count content that still exists, including text in the database. A dead share whose content has already been reaped does not count.
+
+<Callout type="warn" title="A guard, not an accountant">
+Concurrent uploads each read the remaining allowance once, so together they can land past the line. The next upload after them is refused. Leave the same slack you would leave on a disk.
+</Callout>
+
+To hold less, a shorter default lifetime works better than a quota. What is on disk is roughly the upload rate times how long things are kept, so shortening the default lowers the steady state without refusing anybody.
+
+From the command line, `tessera-server quota` sets the same figures, and they apply from the next request:
+
+```bash
+tessera-server quota list
+tessera-server quota set role member 5000000000
+tessera-server quota set-file user alice 100000000
+tessera-server quota set user alice none
+```
+
+`set` is the total, `set-file` the largest single file, both in bytes. `none` clears a figure so the layer above applies again; `0` means no limit at that layer. Anonymous uploads count against the `guest` role, which is how an instance that accepts them can still bound them.
+
+## Uploading without an account
+
+`features.anonymous_upload` is on by default. A share created while signed out comes back with a management token, which is the only way to delete it later.
+
+<Callout type="error" title="The management token appears exactly once">
+The token itself is not kept, only a fingerprint to check it against. Lose it and nobody can delete that share; it has to expire on its own.
+</Callout>
+
+Signing in first is the alternative: the account is the token, and the share appears in your own list.
+
+Deleting a share that is not yours looks the same as one that does not exist. Answering differently would confirm which codes are real.
+
+## Link previews
+
+Pasting a link into Discord, Slack and the like shows a card with a picture. The server draws it, because unfurlers do not run JavaScript and a picture the page assembled would never be seen. It is written in the instance's language.
+
+Cards are kept once drawn, but keyed on what they say, so a card reading "two collections left" is replaced the moment that stops being true. A text share's card shows its first few lines, syntax-coloured.
+
+What a card reveals depends on the share:
+
+| Share | The card shows |
+|---|---|
+| Ordinary | Title or file name, size, what is left |
+| Password-protected | Only that it is password-protected |
+| End-to-end encrypted | Only that, and its size |
+| A link | That it is a shared link. Not the address |
+| Expired or used up | That it is unavailable |
+
+A preview is shown to everyone in the channel; naming the file of a locked share there would make the password decorative. Fetching a preview spends nothing.
+
+You can replace the card with a layout of your own, one design for the whole instance. Whatever the layout asks for, a locked share still reveals nothing: the values are withheld before the layout sees them.
+
+<Shots>
+<Shot name="og-photo" alt="Link preview card of a photo">A normal share</Shot>
+<Shot name="og-locked" alt="Link preview card of a locked share">A password-protected share</Shot>
+</Shots>
+
+<Shot name="og-snippet" alt="Link preview card of a text share">A text share: the first lines, with colour</Shot>
+
+## Settings
+
+<TypeTable
+  type={{
+    "share.code_length": {
+      type: "number",
+      default: "8",
+      description: "Characters in a retrieval code, 4 to 32",
+    },
+    "share.default_expiry_hours": {
+      type: "number",
+      default: "168",
+      description: "7 days. Used when no lifetime is asked for; 0 means use the ceiling below",
+    },
+    "share.max_expiry_hours": {
+      type: "number",
+      default: "720",
+      description: "30 days. Longest lifetime that may be asked for, 0 for no ceiling",
+    },
+    "share.ticket_idle_hours": {
+      type: "number",
+      default: "1",
+      description: "How long authorisation survives without being used",
+    },
+    "share.ticket_ttl_hours": {
+      type: "number",
+      default: "24",
+      description: "The ceiling on top of that",
+    },
+    "share.retain_after_death_hours": {
+      type: "number",
+      default: "168",
+      description: "7 days. How long a dead link can still say it expired",
+    },
+    "share.max_text_bytes": {
+      type: "number",
+      default: "1048576",
+      description: "1 MiB. Largest text share",
+    },
+    "share.upload_session_ttl_hours": {
+      type: "number",
+      default: "24",
+      description: "How long an unfinished upload holds its space",
+    },
+    "storage.max_total_bytes": {
+      type: "number",
+      default: "0",
+      description: "0 means unlimited",
+    },
+    "server.max_body_bytes": {
+      type: "number",
+      default: "104857600",
+      description: "100 MiB. Environment only",
+    },
+  }}
+/>
+
+A default lifetime longer than the ceiling refuses to start.
+
+## Next
+
+<Cards>
+  <Card title="Where files are kept" href="/en/docs/storage" description="A folder on disk, or object storage" />
+  <Card title="Configuration" href="/en/docs/configuration" description="Where settings come from" />
+  <Card title="API" href="/en/docs/api" description="The endpoints behind all of this" />
+</Cards>

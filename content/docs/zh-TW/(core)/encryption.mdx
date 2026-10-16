@@ -1,0 +1,84 @@
+---
+title: 端對端加密
+description: 伺服器存著但讀不到的分享。預設關
+icon: LockKeyhole
+---
+
+加密的分享在離開上傳者的電腦之前就封好了,所以這台機器存著、送出去的,是它沒有金鑰的位元組。打開它這件事在收件人的電腦上發生。
+
+預設關。打開 `features.encryption` 才會收。再關掉的話,新的不收,舊的照樣拿得到。
+
+## 它防的是誰
+
+**操作者,以及任何拿到操作者手上東西的人。** 資料庫的 dump、bucket 的副本、一個會去讀客戶物件的儲存供應商:他們看到的全部是封起來的位元組。
+
+所以它值得開在一台幫不認識的人跑的機器上。在你只給自己用的機器上,它唯一擋得住的人是你。
+
+<Callout type="warn" title="擋不住一個說謊的頁面">
+在瀏覽器裡,負責封裝的程式碼是同一台伺服器剛送來的 JavaScript。想拿到金鑰的操作者可以送一個把金鑰傳回去的頁面,而任何網頁應用都沒辦法從裡面排除這件事。它排除的是存著的資料之後被讀走。指令列沒有這個缺口,因為它的程式碼不是從它在講話的那台伺服器來的。
+</Callout>
+
+<Mermaid
+  chart="
+sequenceDiagram
+  participant U as 上傳者
+  participant S as 伺服器
+  participant R as 收件人
+  U->>U: 用金鑰把內容封起來
+  U->>S: 送出封好的位元組
+  U->>R: 給連結,金鑰在連結的片段裡
+  R->>S: 拿封好的位元組
+  S-->>R: 封好的位元組
+  R->>R: 用金鑰打開
+"
+/>
+
+## 金鑰放哪的兩種方式
+
+**放在連結裡。** 金鑰寫在分享網址的 `#` 後面。瀏覽器從來不會把那段送給伺服器,所以拿到整條連結的人打得開,只拿到取件碼的人打不開。
+
+**從密碼來。** 金鑰是從一組密碼推出來的,所以取件碼加密碼就夠了,兩個都能用電話念。
+
+<Callout type="error" title="從密碼來的金鑰有兩個代價">
+拿到存著的位元組的人可以離線猜密碼,所以密碼至少要 12 個字,客戶端在上傳之前就會擋掉更短的。而且因為金鑰是從它來的,這種分享的密碼永遠不能改,也不能拿掉。
+</Callout>
+
+## 藏住的,和沒藏住的
+
+| 藏住的 | 沒藏住的 |
+|---|---|
+| 內容 | 每個檔案多大 |
+| 檔名和類型 | 有幾個檔案 |
+| 標題 | 什麼時候建的、什麼時候過期 |
+| 文字分享的語言 | 被拿了幾次、從哪裡拿的 |
+
+右邊那欄是這台機器執行配額、期限和次數限制要用到的。
+
+## 不一樣的地方
+
+- **好幾個檔案會一個一個來**,不會打包。打包檔要從伺服器讀不到的內容組出來。
+- **連結預覽**只寫它是端對端加密的,以及大小。
+- **掃毒會跳過它。** 掃毒軟體什麼都讀不到。見[掃毒](/zh-TW/docs/scanning)。
+- **文字不能從純文字連結直接開**,要先由客戶端解密。
+
+## 用指令列
+
+`tessera` 這個指令可以送和拿分享,加不加密都行。它是從 repo 裡的 `apps/cli` 編出來的,目前還沒有打包好的發布版。
+
+```bash
+tessera send --server https://files.example.com --encrypt holiday/*.jpg
+tessera send --server https://files.example.com --encrypt --password report.pdf
+echo "一段筆記" | tessera send --server https://files.example.com -
+tessera get 'https://files.example.com/s/0ZPQ4M7K#…' -o downloads/
+```
+
+`--password` 會問你密碼,而不是在指令上直接給(那樣 `ps` 看得到),也可以讀 `TESSERA_PASSWORD`。沒加 `--encrypt` 的話,它設的是一般的分享密碼。`--server` 和 `--token` 可以從 `TESSERA_SERVER` 和 `TESSERA_TOKEN` 來;沒有 token 就是匿名上傳。`--expires` 吃小時數,`--max-uses` 吃次數。
+
+上傳斷線之後會接著傳。`get` 只保留每個檔名裡一般的路徑段,所以檔案寫不到你指定的目錄以外,而且不會覆蓋已經存在的檔案。
+
+## 接下來
+
+<Cards>
+  <Card title="分享" href="/zh-TW/docs/shares" description="取件碼、次數與期限" />
+  <Card title="你的資料在哪裡" href="/zh-TW/docs/your-data" description="這台機器握有一個人的哪些東西" />
+</Cards>

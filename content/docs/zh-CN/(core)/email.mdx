@@ -1,0 +1,107 @@
+---
+title: 邮件
+description: 可选。开了之后注册和忘记密码会不一样
+icon: Mail
+---
+
+不配也能跑。单人的家用机通常不用配,忘记密码可以[用命令救](/zh-CN/docs/accounts#命令)。
+
+## 配置
+
+在后台设,或用环境变量:
+
+| 配置 | |
+|---|---|
+| `mail.host` | 中继主机 |
+| `mail.port` | 默认 587 |
+| `mail.tls` | 连接怎么加密,见下面 |
+| `mail.username`、`mail.password` | 存了之后就封起来,后台不会再显示 |
+| `mail.from` | 发件地址。域名要是中继肯让你发的 |
+| `mail.public_url` | 邮件里每条链接的开头。填收件人的浏览器打得开的地址 |
+
+`host`、`from`、`public_url` 三个都有值才算配好。只填一半会被拒绝,不会照样跑,因为那会画出一个「忘记密码」链接,然后在有人已经被锁在外面的时候才失败。
+
+### 连接怎么加密
+
+`mail.tls` 是其中之一:
+
+- **auto**,默认:port 465 从第一个字节就走 TLS,其他 port 走 STARTTLS。
+- **starttls** 或 **implicit**,强制用其中一种。
+- **none**,给同一台机器或同一个网段上的中继:本机的 postfix、中继容器、Mailpit。中继的地址不是私有、loopback 或 link-local 的话,它会拒绝发。
+
+<Callout type="warn" title="auto 的行为改过">
+旧版只有 587 走 STARTTLS,其他 port 全部从一开始就走 TLS。现在中继如果在 465 以外的 port 要求一开始就走 TLS,要明确设成 `implicit`。设错会得到一个看起来像证书问题的握手错误。
+</Callout>
+
+| 配置 | 默认 | 上限 |
+|---|---|---|
+| `reset_ttl_minutes` | 30 | 24 小时 |
+| `registration_ttl_hours` | 24 | 7 天 |
+
+## 注册会变成两段
+
+没配置的时候,注册当场建好账号并且登录。
+
+<Mermaid
+  chart="
+flowchart LR
+  A[有人注册] --> B{有配置 mail?}
+  B -->|没有| C[当场建好账号<br/>直接登录]
+  B -->|有| D[还没建任何东西<br/>等点链接]
+"
+/>
+
+配置之后什么都还没创建。数据先放着,对方点了邮件里的链接才真的有账号。
+
+<Mermaid
+  chart="
+sequenceDiagram
+  participant 访客
+  participant tessera
+  participant 邮箱
+  访客->>tessera: 注册
+  tessera-->>访客: 去收信
+  tessera->>邮箱: 确认链接
+  访客->>tessera: 点了链接
+  tessera-->>访客: 账号建好,直接登录
+"
+/>
+
+这样做是因为任何人都能填别人的地址。直接建账号的话,拿别人的地址去注册可以占走那个地址、占走一个用户名,还能在一个他读不到的邮箱后面用掉这台机器的存储空间。
+
+<Callout type="warn" title="前端要读 /capabilities">
+  用 `registration_requires_confirmation`
+  决定要显示「去收信」还是「欢迎」,不要看状态码猜。读错的话会对一个还得去收信的人说欢迎。
+</Callout>
+
+会遇到的响应:
+
+- **用户名被占了。** 用户名是用户自己挑的代号,所以直接告诉他。
+- **地址已经有账号了。** 访客看到的跟成功一模一样,都是「去收信」,同时发一封信给那个地址说有人试过。说「这个地址已经有人用了」的话,注册表单就变成一个问「某人在不在这台机器上」的地方。
+- **同一个地址发太多次。** 一小时三封,注册和重置各自计数。
+
+<Accordions>
+<Accordion title="点链接的时候用户名被别人拿走了会怎样">
+
+只能重新注册一次。
+
+用户名在等待期间**不保留**。保留的话,「注册完不确认」就是免费把好名字全部锁起来的方法,而管理员拿它没办法。代价是偶尔有人要重填一次表单。
+
+</Accordion>
+</Accordions>
+
+## 忘记密码
+
+要求重置密码的时候,地址存不存在得到的回答都一样,理由同上。没配置发信的话根本没有重置链接这件事,而且机器会讲明,所以前端可以直接不放那个选项,而不是给一个按了没用的东西。
+
+<Accordions>
+<Accordion title="编一份完全不含发信的">
+
+发信的能力默认就编进去了,不编省 37 KB。它跟上面的配置是两个不同的问题:这个决定程序有没有办法发,那些决定这台机器要不要发。
+
+```bash
+cargo build --no-default-features --features sqlite,storage-fs
+```
+
+</Accordion>
+</Accordions>

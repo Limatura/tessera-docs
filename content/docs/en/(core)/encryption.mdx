@@ -1,0 +1,84 @@
+---
+title: End-to-end encryption
+description: Shares the server stores but cannot read. Off by default
+icon: LockKeyhole
+---
+
+An encrypted share is sealed on the uploader's machine before it leaves, so the instance stores and hands out bytes it holds no key for. Opening it happens on the recipient's machine.
+
+Off by default. Turn on `features.encryption` to accept them. Turning it off again refuses new ones and leaves existing ones retrievable.
+
+## Who it protects against
+
+**The operator, and anyone who gets what the operator has.** A database dump, a copy of the bucket, a storage provider reading its customers' objects: all of them see sealed bytes.
+
+That makes it worth having on an instance run for people the operator does not know. On an instance you run for yourself, the only person it keeps out is you.
+
+<Callout type="warn" title="Not against a page that lies">
+In a browser, the code doing the sealing is JavaScript this same server sent. An operator who wanted the keys could serve a page that sends them home, and no web application can rule that out from inside itself. What it does rule out is stored data being read later. The command line does not have this gap, because its code did not come from the server it talks to.
+</Callout>
+
+<Mermaid
+  chart="
+sequenceDiagram
+  participant U as Uploader
+  participant S as Server
+  participant R as Recipient
+  U->>U: Seal the content with a key
+  U->>S: Send the sealed bytes
+  U->>R: Share the link, key in its fragment
+  R->>S: Fetch the sealed bytes
+  S-->>R: Sealed bytes
+  R->>R: Open them with the key
+"
+/>
+
+## Two ways to hold the key
+
+**In the link.** The key is written after `#` in the share's address. Browsers never send that part to a server, so whoever has the whole link can open the share and whoever has only the retrieval code cannot.
+
+**From a password.** The key is derived from a password, so the code and the password are enough and both can be read out over the phone.
+
+<Callout type="error" title="A password-derived key has two costs">
+Whoever has the stored bytes can guess passwords offline, so the password must be at least 12 characters and the client refuses anything shorter before uploading. And because the key comes from it, the password of such a share can never be changed or removed.
+</Callout>
+
+## What is hidden, and what is not
+
+| Hidden | Not hidden |
+|---|---|
+| The content | How large each file is |
+| File names and types | How many files there are |
+| The title | When it was made and when it expires |
+| A text share's language | How often it is fetched, and from where |
+
+The second column is what the instance needs to enforce quotas, expiry and limits.
+
+## What works differently
+
+- **Several files arrive one at a time**, never as an archive. An archive would have to be built from content the server cannot read.
+- **The link preview** says only that the share is end-to-end encrypted, and its size.
+- **Virus scanning skips it.** There is nothing a scanner could read. See [virus scanning](/en/docs/scanning).
+- **Text cannot be opened as plain text** from the raw link; it has to be decrypted by a client first.
+
+## From the command line
+
+The `tessera` command sends and fetches shares, encrypted or not. It is built from `apps/cli` in the repository; there is no packaged release yet.
+
+```bash
+tessera send --server https://files.example.com --encrypt holiday/*.jpg
+tessera send --server https://files.example.com --encrypt --password report.pdf
+echo "a note" | tessera send --server https://files.example.com -
+tessera get 'https://files.example.com/s/0ZPQ4M7K#…' -o downloads/
+```
+
+`--password` asks for the password rather than taking it on the command line, where `ps` would show it, or reads `TESSERA_PASSWORD`. Without `--encrypt` it sets an ordinary share password instead. `--server` and `--token` can come from `TESSERA_SERVER` and `TESSERA_TOKEN`; without a token the upload is anonymous. `--expires` takes hours and `--max-uses` a count.
+
+Uploads resume after a dropped connection. `get` keeps only ordinary path parts of each name, so a file cannot be written outside the directory you asked for, and it does not overwrite files that already exist.
+
+## Next
+
+<Cards>
+  <Card title="Shares" href="/en/docs/shares" description="Codes, collections and expiry" />
+  <Card title="Where your data lives" href="/en/docs/your-data" description="What the instance holds about a person" />
+</Cards>

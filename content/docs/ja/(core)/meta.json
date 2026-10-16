@@ -1,0 +1,20 @@
+{
+  "title": "コア",
+  "description": "コアドキュメント",
+  "icon": "BookOpen",
+  "root": true,
+  "pages": [
+    "index",
+    "shares",
+    "encryption",
+    "configuration",
+    "storage",
+    "scanning",
+    "accounts",
+    "sign-in",
+    "your-data",
+    "administration",
+    "email",
+    "reverse-proxy"
+  ]
+}

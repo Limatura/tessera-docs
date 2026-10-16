@@ -1,0 +1,107 @@
+---
+title: 寄信
+description: 選配。開了之後註冊和忘記密碼會不一樣
+icon: Mail
+---
+
+不設也能跑。單人的家用機通常不用設,忘記密碼可以[用指令救](/zh-TW/docs/accounts#忘記密碼)。
+
+## 設定
+
+在後台設,或用環境變數:
+
+| 設定 | |
+|---|---|
+| `mail.host` | 中繼主機 |
+| `mail.port` | 預設 587 |
+| `mail.tls` | 連線怎麼加密,見下面 |
+| `mail.username`、`mail.password` | 存了之後就封起來,後台不會再顯示 |
+| `mail.from` | 寄件地址。網域要是中繼肯讓你寄的 |
+| `mail.public_url` | 信裡每條連結的開頭。填收件人的瀏覽器打得開的位址 |
+
+`host`、`from`、`public_url` 三個都有值才算設好。只填一半會被拒絕,不會照樣跑,因為那會畫出一個「忘記密碼」連結,然後在有人已經被鎖在外面的時候才失敗。
+
+### 連線怎麼加密
+
+`mail.tls` 是其中之一:
+
+- **auto**,預設:port 465 從第一個位元組就走 TLS,其他 port 走 STARTTLS。
+- **starttls** 或 **implicit**,強制用其中一種。
+- **none**,給同一台機器或同一個網段上的中繼:本機的 postfix、中繼容器、Mailpit。中繼的位址不是私有、loopback 或 link-local 的話,它會拒絕寄。
+
+<Callout type="warn" title="auto 的行為改過">
+舊版只有 587 走 STARTTLS,其他 port 全部從一開始就走 TLS。現在中繼如果在 465 以外的 port 要求一開始就走 TLS,要明確設成 `implicit`。設錯會得到一個看起來像憑證問題的握手錯誤。
+</Callout>
+
+| 設定 | 預設 | 上限 |
+|---|---|---|
+| `reset_ttl_minutes` | 30 | 24 小時 |
+| `registration_ttl_hours` | 24 | 7 天 |
+
+## 註冊會變成兩段
+
+沒設定的時候,註冊當場建好帳號並且登入。
+
+<Mermaid
+  chart="
+flowchart LR
+  A[有人註冊] --> B{有設定 mail?}
+  B -->|沒有| C[當場建好帳號<br/>直接登入]
+  B -->|有| D[還沒建任何東西<br/>等點連結]
+"
+/>
+
+設定之後什麼都還沒建立。資料先放著,對方點了信裡的連結才真的有帳號。
+
+<Mermaid
+  chart="
+sequenceDiagram
+  participant 訪客
+  participant tessera
+  participant 信箱
+  訪客->>tessera: 註冊
+  tessera-->>訪客: 去收信
+  tessera->>信箱: 確認連結
+  訪客->>tessera: 點了連結
+  tessera-->>訪客: 帳號建好,直接登入
+"
+/>
+
+這樣做是因為任何人都能填別人的地址。直接建帳號的話,拿別人的地址去註冊可以佔走那個地址、佔走一個使用者名稱,還能在一個他讀不到的信箱後面用掉這台機器的儲存空間。
+
+<Callout type="warn" title="前端要讀 /capabilities">
+  用 `registration_requires_confirmation`
+  決定要顯示「去收信」還是「歡迎」,不要看狀態碼猜。讀錯的話會對一個還得去收信的人說歡迎。
+</Callout>
+
+會遇到的回應:
+
+- **名稱被用了。** 名稱是使用者自己挑的代號,所以直接告訴他。
+- **地址已經有帳號了。** 訪客看到的跟成功一模一樣,都是「去收信」,同時寄一封信給那個地址說有人試過。說「這個地址已經有人用了」的話,註冊表單就變成一個問「某人在不在這台機器上」的地方。
+- **同一個地址寄太多次。** 一小時三封,註冊和重設各自計數。
+
+<Accordions>
+<Accordion title="點連結的時候名稱被別人拿走了會怎樣">
+
+只能重新註冊一次。
+
+名稱在等待期間**不保留**。保留的話,「註冊完不確認」就是免費把好名字全部鎖起來的方法,而管理員拿它沒辦法。代價是偶爾有人要重填一次表單。
+
+</Accordion>
+</Accordions>
+
+## 忘記密碼
+
+要求重設密碼的時候,地址存不存在得到的回答都一樣,理由同上。沒設定寄信的話根本沒有重設連結這件事,而且機器會講明,所以前端可以直接不放那個選項,而不是給一個按了沒用的東西。
+
+<Accordions>
+<Accordion title="編一份完全不含寄信的">
+
+寄信的能力預設就編進去了,不編省 37 KB。它跟上面的設定是兩個不同的問題:這個決定程式有沒有辦法寄,那些決定這台機器要不要寄。
+
+```bash
+cargo build --no-default-features --features sqlite,storage-fs
+```
+
+</Accordion>
+</Accordions>

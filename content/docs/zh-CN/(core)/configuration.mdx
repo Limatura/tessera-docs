@@ -1,0 +1,171 @@
+---
+title: 配置
+description: 配置从哪里来,以及谁覆盖谁
+icon: Settings
+---
+
+配置在两个地方,而且不重叠。
+
+- **环境变量**放跑起来之后改不动的,以及几个数据库里绝对不能有的秘密。
+- **后台**在同一个网址的 `/admin/`,放其他全部。存在数据库里,改完不用重启。
+
+后台里看得到的,改了就会生效。要重启才会生效的配置,会显示成只读并附上原因。
+
+<Callout type="error" title="没有配置文件">
+`tessera.yaml` 和 `tessera.toml` 不会被读。还设着 `TESSERA_CONFIG_FILE` 的机器开得起来但会记一句警告,那个文件里写什么都不算数。
+</Callout>
+
+## 一定要走环境变量的
+
+**开机时就定了。** socket 已经 bind、连接池已经建好、log 的 subscriber 开机只装一次。
+
+- `server.host`、`server.port`、`server.data_dir`、`server.max_body_bytes`、`server.cors_allowed_origins`、`server.assets_dir`
+- `features.docs`
+- `database.` 和 `telemetry.` 底下的全部
+
+**数据库里不能有的秘密。**
+
+- `database.url`、`auth.admin_password`、`security.secret_key`
+
+其他的跑着就能改。
+
+## 放在后台的凭证
+
+发信中继的账密、扫毒服务的授权请求头、第三方登录的 client secret,还有存储 backend 的地址,都跟其他配置一样在后台设。后台会告诉你某一个有没有设,但不会再显示它,所以读得到配置的人读不到密码。
+
+### 封住凭证的那把密钥
+
+那些凭证是加密存的。密钥是 `security.secret_key`;留空的话,机器会在第一次启动时生成一把,存成 `server.data_dir` 底下的 `secret.key`。
+
+<Callout type="error" title="密钥丢了,所有封起来的凭证就没了">
+没有它,数据库的备份对那些值来说没有用;在新机器上还原却没带密钥,就要把每一个 backend 和秘密重新输入一次。`secret.key` 跟数据库一起备份,或是设 `TESSERA_SECURITY__SECRET_KEY`(`openssl rand -hex 32`)并且放在备份不在的地方。
+</Callout>
+
+## 环境变量怎么写
+
+```bash
+TESSERA_SERVER__PORT=9000
+TESSERA_DATABASE__URL=postgres://…
+```
+
+前缀 `TESSERA_`,嵌套用两个下划线。列表可以用逗号,也可以用 JSON 数组:
+
+```bash
+TESSERA_SERVER__CORS_ALLOWED_ORIGINS='https://a.example, https://b.example'
+TESSERA_SERVER__CORS_ALLOWED_ORIGINS='["https://a.example","https://b.example"]'
+```
+
+不是配置的 key 会让它停下来,不会默默忽略,所以打错字在开机时就抓到。
+
+systemd 的 `EnvironmentFile=` 一样是指一个文件。repo 里的 `contrib/tessera.service` 有一份能用的。
+
+主 repo 有两份可以直接拿来改:只有你和你信任的人用的,从 [`tessera.personal.env.example`](https://github.com/Limatura/tessera/blob/main/tessera.personal.env.example) 开始;开放给陌生人上传的,从 [`tessera.public.env.example`](https://github.com/Limatura/tessera/blob/main/tessera.public.env.example) 开始。注释是繁体中文。
+
+## 其他的怎么改
+
+三条路进同一个地方:
+
+<Tabs items={["后台", "命令", "API"]}>
+<Tab value="后台">
+
+每一个配置、现在生效的值,以及它是从哪一层来的。只能走环境变量的会显示成只读。
+
+</Tab>
+<Tab value="命令">
+
+```bash
+tessera-server settings list
+tessera-server settings set share.code_length 10
+tessera-server settings reset share.code_length
+```
+
+`set` 吃 JSON,所以一个裸词会被当成字符串。`reset` 把存起来的值拿掉,让下面那一层重新决定。后台关掉的时候用这个。
+
+正在运行的服务器要到下次启动才会读到。`settings reset-all` 会清掉所有存起来的值,后台被改到整台不能用的时候,用它回到原点。
+
+</Tab>
+<Tab value="API">
+
+`GET /api/v1/admin/settings` 列出每一个配置的 `source`,改不动的会附原因。`PUT` 应用改动。
+
+</Tab>
+</Tabs>
+
+## 谁覆盖谁
+
+由低到高:**内置默认值,然后是环境变量,然后是存起来的配置**。
+
+<Callout title="存起来的配置覆盖环境变量">
+它是唯一有人在这台机器上刻意改过的一层。容器镜像自己会设几个变量,让那些赢的话,后台就变成一个报告成功但什么都没改的界面。
+</Callout>
+
+存起来的值如果这个版本不收(降版或改坏了),会被一个 key 一个 key 地丢掉并记进 log,由下面那一层决定,其他配置不受影响。
+
+<Callout type="warn" title="有些改动会毁掉东西">
+把保存期改短,已经超过新界线的东西就没了。后台会先拒绝,要你确认,并且先告诉你会丢掉多少。
+</Callout>
+
+<Mermaid
+  chart="
+flowchart LR
+  A[内置默认值] -->|被覆盖| B[环境变量]
+  B -->|被覆盖| C[后台存起来的值]
+  C --> D[实际生效的值]
+"
+/>
+
+## 几个会想先改的
+
+<TypeTable
+  type={{
+    "server.host": {
+      type: "IP",
+      default: "127.0.0.1",
+      description: "只能走环境变量。镜像里已经是 0.0.0.0",
+    },
+    "server.port": { type: "number", default: "12923", description: "只能走环境变量" },
+    "server.data_dir": {
+      type: "path",
+      default: "data",
+      description: "只能走环境变量。secret.key 和第一个 backend 的文件夹放这里。镜像里是 /data",
+    },
+    "server.public_url": {
+      type: "URL",
+      default: "(从每个请求推)",
+      description: "外面连进来用的网址。第三方登录没有它就不肯动,链接预览变空白也要设它",
+    },
+    "auth.registration": {
+      type: "open | invite | closed",
+      default: "open",
+      description: "invite 要有管理员发的码",
+    },
+    "auth.default_role": {
+      type: "string",
+      default: "member",
+      description: "新账号进哪个角色。必须存在,否则服务器不会启动",
+    },
+    "auth.session_ttl_hours": { type: "number", default: "720", description: "30 天" },
+    "features.anonymous_upload": {
+      type: "boolean",
+      default: "true",
+      description: "开在公网记得一起设 storage.max_total_bytes",
+    },
+    "features.encryption": {
+      type: "boolean",
+      default: "false",
+      description: "收端对端加密的分享",
+    },
+    "features.docs": {
+      type: "boolean",
+      default: "false",
+      description: "只能走环境变量。一页可以浏览的 API 参考,界面是浏览器去 CDN 拿的",
+    },
+    "share.code_length": { type: "number", default: "8" },
+  }}
+/>
+
+<Callout type="error" title="匿名上传没有配额">
+`features.anonymous_upload` 开着而 `storage.max_total_bytes` 没设的话,任何连得到的人都能把磁盘塞满。启动时会警告。
+</Callout>
+
+`server.request_timeout_secs` 不管上传。一个时钟预算没办法同时让 5 GB 的上传传完、又挡掉连上来就不发东西的客户端,所以上传改看 `server.upload_stall_secs`:可以多久没有任何字节进来。

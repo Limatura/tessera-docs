@@ -1,0 +1,168 @@
+@import "tailwindcss";
+@import "fumadocs-ui/css/dusk.css";
+@import "fumadocs-ui/css/preset.css";
+@import "fumadocs-openapi/css/preset.css";
+
+/* dusk's greys, tessera's orange. Brand value is 0.553, but that only reaches
+   4.26 against dusk's light background and links need 4.5 for AA. */
+@theme {
+  --color-fd-primary: oklch(0.53 0.195 38.402);
+  --color-fd-primary-foreground: oklch(0.98 0.016 73.684);
+  --color-fd-ring: oklch(0.53 0.195 38.402);
+}
+
+/* Can't reuse the app's dark --primary here. There it's a button background;
+   here it's link text too, and 0.47 disappears on near-black. */
+.dark {
+  --color-fd-primary: oklch(0.8 0.13 38.402);
+  --color-fd-primary-foreground: oklch(0.18 0.012 38.402);
+  --color-fd-ring: oklch(0.8 0.13 38.402);
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+/* Japanese has no spaces, so headings otherwise wrap mid-word. Browsers
+   without auto-phrase ignore it and wrap as before. */
+:lang(ja) :is(h1, h2, h3) {
+  word-break: auto-phrase;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Landing page                                                             */
+/* ------------------------------------------------------------------------ */
+
+/* The app's own dark theme (packages/ui globals.css): stone ink and panel,
+   and the orange of the logo's stub with a step either side of it. On ink,
+   ember-400 and ember-300 carry text; ember-600 is a button fill. */
+@theme {
+  --color-ink: #1c1917;
+  --color-panel: #292524;
+  --color-ember-200: #ffc9b0;
+  --color-ember-300: #ffa27a;
+  --color-ember-400: #f2774a;
+  --color-ember-500: #d94f2b;
+  --color-ember-600: #b53a1b;
+  /* Secondary text in the footer, 5.6:1 or better on ink. */
+  --color-dim: #8c8c8c;
+}
+
+/* The landing page is dark whatever the theme switch says. fumadocs reads its
+   own tokens, so overriding them here keeps its navbar in the same colours
+   without forking the header. */
+.landing {
+  color-scheme: dark;
+  background-color: var(--color-ink);
+  --color-fd-background: var(--color-ink);
+  --color-fd-foreground: #fafaf9;
+  --color-fd-muted: rgb(255 255 255 / 0.04);
+  --color-fd-muted-foreground: #a8a29e;
+  --color-fd-card: var(--color-panel);
+  --color-fd-card-foreground: #fafaf9;
+  --color-fd-popover: var(--color-panel);
+  --color-fd-popover-foreground: #fafaf9;
+  --color-fd-accent: rgb(255 255 255 / 0.06);
+  --color-fd-accent-foreground: #fafaf9;
+  --color-fd-secondary: rgb(255 255 255 / 0.04);
+  --color-fd-secondary-foreground: #fafaf9;
+  --color-fd-border: rgb(255 255 255 / 0.1);
+  --color-fd-primary: var(--color-ember-400);
+  --color-fd-primary-foreground: #0c0a09;
+  --color-fd-ring: var(--color-ember-400);
+}
+
+/* Entrances. The hero's run on load, in CSS so they don't wait for
+   hydration. Everything marked data-reveal is handled by LandingShell: it
+   adds .reveal-on, then flags each element as it enters (data-shown) or
+   leaves past the top (data-above), so blocks come in from below and go out
+   upwards. Without JS or with reduced motion, nothing is ever hidden. */
+@keyframes landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+@keyframes landing-float {
+  50% {
+    transform: translateY(-8px);
+  }
+}
+@keyframes landing-line {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+}
+@keyframes split-cut {
+  0% {
+    transform: none;
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(18px) scale(0.6);
+    opacity: 0;
+  }
+}
+@keyframes split-fill {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .reveal-now {
+    animation: landing-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .float-slow {
+    animation: landing-float 7s ease-in-out infinite;
+  }
+  .float-slower {
+    animation: landing-float 9s ease-in-out 1s infinite;
+  }
+
+  .reveal-on [data-reveal] {
+    opacity: 0;
+    transform: translateY(48px) scale(0.98);
+    transition:
+      opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: var(--delay, 0ms);
+  }
+  .reveal-on [data-reveal][data-above] {
+    transform: translateY(-48px) scale(0.98);
+  }
+  .reveal-on [data-reveal][data-shown] {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* The split card: the file breaks into pieces, which drop into the
+     buckets one after another, the way the planner fills them. */
+  .reveal-on [data-reveal] .split-piece,
+  .reveal-on [data-reveal] .split-fill {
+    transform-origin: bottom;
+  }
+  .reveal-on [data-reveal]:not([data-shown]) .split-fill {
+    transform: scaleY(0);
+  }
+  .reveal-on [data-reveal][data-shown] .split-piece {
+    animation: split-cut 0.5s cubic-bezier(0.55, 0, 0.45, 1) both;
+    animation-delay: calc(0.6s + var(--i) * 0.45s);
+  }
+  .reveal-on [data-reveal][data-shown] .split-fill {
+    animation: split-fill 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(0.85s + var(--i) * 0.45s);
+  }
+}
+
+/* The scrollbar gutter and overscroll belong to <html>, outside .landing. */
+html:has(.landing) {
+  color-scheme: dark;
+  background-color: var(--color-ink);
+}

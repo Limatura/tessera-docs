@@ -1,0 +1,142 @@
+---
+title: 文件放在哪里
+description: 默认是磁盘上的一个文件夹,也可以挂很多个 bucket
+icon: HardDrive
+---
+
+上传的文件会放进磁盘上的一个文件夹。第一次启动时,机器会建一个叫 `default` 的存储 backend,指向 `server.data_dir` 底下的 `blobs`,所有上传都发去那里。对一个人用自己的机器来说,答案到这里就结束了。
+
+Docker 镜像里 `server.data_dir` 是 `/data`,所以把那个卷挂出来,文件就能撑过重建。
+
+## 再加别的地方
+
+backend 在后台管。每一个有名字、地址、选填的容量上限、一个只读开关,以及能不能让浏览器直接连过去。加一个 bucket、把它设成默认,文件夹就不再收新的上传,而且下次启动也不会再被加回来。
+
+<Callout type="error" title="地址封起来存,而且拿不回来">
+它带着凭证,所以存之前会用 `security.secret_key` 加密,而且没有任何请求读得回它。那把密钥丢了的话,每一个 backend 都要重新输入。见[配置](/zh-CN/docs/configuration#封住凭证的那把密钥)。
+</Callout>
+
+用一个已经存在的名字再加一次,就是换掉那一个。
+
+### 文件会进哪一个
+
+只要塞得下就用默认的那个,因为运维指定了它就是有意的。塞不下的时候其他的才进来竞争,由刚好装得下的那个胜出。
+
+把一个 backend 标成只读,它就不再收新东西,但已经在里面的不动。要退役一个的时候就是这样做。
+
+<Mermaid
+  chart="
+flowchart TD
+  A[新的文件] --> B{默认的装得下?}
+  B -->|是| C[默认的 backend]
+  B -->|否| D{别的装得下?}
+  D -->|是| E[刚好装得下的那个]
+  D -->|否| F{开了拆分?}
+  F -->|开了| G[拆到好几个 backend]
+  F -->|没开| H[拒绝]
+"
+/>
+
+### 比任何一个都大的文件
+
+默认关。打开之后,单一 backend 装不下的文件会被拆到好几个里。五个免费的 10 GB bucket,开着能收 40 GB 的文件,关着会拒绝。
+
+一般的上传不会被分散。只有在没有任何一个装得下的时候才会拆。
+
+拆过的文件下载时会经过这台服务器,除非存着每一段的 backend 都开了直连;那样的话由浏览器自己去拿每一段再拼起来。在免费方案上,经过服务器等于上传和下载带宽各计费一次。
+
+### 什么时候会想要不只一个
+
+- 机器的磁盘很小或很贵,而 bucket 不是。
+- 不只一台机器要看到同一批文件。
+- 你本来就跑着 Garage 或 MinIO,宁愿只有一个地方要备份。
+
+其他情况用文件夹比较单纯、比较快,而且少一个会配错的东西。
+
+## 退役
+
+把 backend 设成只读,新内容就会放到别处,已经存在上面的照样送得出去。等上面什么都没了才能移除:分享过期、清扫把内容清掉,它就会慢慢变空。
+
+<Callout type="warn" title="还有文件的 backend 移除不了">
+后台和命令行都会拒绝,并告诉你还剩几个文件。先设成只读,等它清空。
+</Callout>
+
+## 从命令行
+
+`tessera-server backends` 做的事跟后台一样,服务停着也能用。
+
+```bash
+tessera-server backends list
+tessera-server backends add archive s3://my-bucket
+tessera-server backends default archive
+tessera-server backends capacity archive 10000000000
+tessera-server backends retire default
+tessera-server backends remove default
+```
+
+`list` 不会显示凭证。`capacity` 的单位是字节,`0` 是不设上限。`retire` 就是只读开关。正在运行的服务器要到下次启动才会读到这些变更。
+
+## 地址怎么填
+
+| 存储 | 地址 | 备注 |
+|---|---|---|
+| 磁盘上的文件夹 | `data/blobs` | 默认 |
+| Garage、RustFS、MinIO、VersityGW | `s3://bucket` | |
+| SeaweedFS | `s3://bucket` | 没有 `-s3.config` 身份文件会拒绝所有写入 |
+| s3proxy | `s3://bucket` | 要比 2.6.0 新的版本 |
+| Azure Blob | `azure://container` | |
+| WebDAV | `https://host/path` | 只收小文件,见下面 |
+| Google Cloud Storage | `gs://bucket` | 没测过,见下面 |
+
+供应商在地址之外还需要的东西,像是 endpoint、region,或是给走普通 HTTP 的存储用的 `allow_http`,填在那个 backend 的 options 里。
+
+表上除了最后一个,每一次改动都会对它跑一遍测试。AWS S3、Cloudflare R2 和 Backblaze B2 讲的是同一套 S3 API,由另一个有给凭证才会跑的 job 验。
+
+<Callout type="error" title="WebDAV 只收 64 KiB 以下的文件">
+WebDAV 上传只有一种方式:一个请求把整个内容发完,而超过 `share.inline_threshold_bytes` 的东西是一段一段写的。比较大的文件会直接被拒绝,不会传到一半才失败。拿它放笔记和小文件,不然就不要用。
+</Callout>
+
+<Callout type="warn" title="Google Cloud Storage 有编进去,但没测过">
+没有模拟器实现库写入时用的那套 API,所以这里没有东西证明它能用。你如果是第一个用的,交付任何东西之前先传一个大文件、下载回来、删掉,再去 bucket 里确认。
+</Callout>
+
+## 让浏览器直接连 bucket
+
+S3 或 Google Cloud Storage 的 backend 可以打开直连。打开之后大文件的上传会从浏览器直接进 bucket,不经过这台服务器;有些下载也会拿到一条只活十五秒的链接,而不是由服务器转发。
+
+下载只有在这些全部成立时才会直连:分享没有密码、没有次数限制、只有一个文件,而且访客的浏览器连得到那个 bucket。其他情况照旧由这台机器发,而且每一次下载前的检查都一样先跑。
+
+bucket 要设一条允许浏览器上传的 CORS 规则。没有的话浏览器会退回去经过服务器发,能用,但什么都没省到。
+
+## 用 S3 要设的一条规则
+
+上传开了之后被放着不管,会在 bucket 里留下一些碎片。tessera 会清掉它找得到的,但清失败的话 S3 会永远留着并且计费,而且那些东西不会出现在你的文件列表里。
+
+<Callout type="error" title="设一条 AbortIncompleteMultipartUpload 生命周期规则">
+比 `share.upload_session_ttl_hours` 多几天。每一家 S3 供应商都支持,没有它 bucket 会无声地长大。
+</Callout>
+
+## bucket 里会出现什么
+
+一个文件一个对象,按年、月和一组随机编号归档,所以路径里不会出现用户名或地址。文本分享根本不在这里,它们在数据库里。
+
+另外有一个定期的检查会拿每一个 backend 存着的东西跟记录对账,把已经没有任何一条指着的对象删掉。
+
+<Accordions>
+<Accordion title="编一个小一点的可执行文件">
+
+每一种存储都是编译时的选项,发布的镜像里全部开着。从源码编、而且只会用文件夹的话:
+
+```bash
+cargo build --no-default-features --features sqlite,storage-fs,email
+```
+
+</Accordion>
+</Accordions>
+
+## 接下来
+
+<Cards>
+  <Card title="分享" href="/zh-CN/docs/shares" description="存了什么,以及会留多久" />
+  <Card title="管理" href="/zh-CN/docs/administration" description="backend、角色和配额" />
+</Cards>

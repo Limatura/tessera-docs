@@ -1,0 +1,84 @@
+---
+title: 端对端加密
+description: 服务器存着但读不到的分享。默认关
+icon: LockKeyhole
+---
+
+加密的分享在离开上传者的电脑之前就封好了,所以这台机器存着、发出去的,是它没有密钥的字节。打开它这件事在收件人的电脑上发生。
+
+默认关。打开 `features.encryption` 才会收。再关掉的话,新的不收,旧的照样拿得到。
+
+## 它防的是谁
+
+**运维,以及任何拿到运维手上东西的人。** 数据库的 dump、bucket 的副本、一个会去读客户对象的存储供应商:他们看到的全部是封起来的字节。
+
+所以它值得开在一台帮不认识的人跑的机器上。在你只给自己用的机器上,它唯一挡得住的人是你。
+
+<Callout type="warn" title="挡不住一个说谎的页面">
+在浏览器里,负责封装的代码是同一台服务器刚发来的 JavaScript。想拿到密钥的运维可以发一个把密钥传回去的页面,而任何网页应用都没办法从里面排除这件事。它排除的是存着的数据之后被读走。命令行没有这个缺口,因为它的代码不是从它在讲话的那台服务器来的。
+</Callout>
+
+<Mermaid
+  chart="
+sequenceDiagram
+  participant U as 上传者
+  participant S as 服务器
+  participant R as 收件人
+  U->>U: 用密钥把内容封起来
+  U->>S: 发送封好的字节
+  U->>R: 给链接,密钥在链接的片段里
+  R->>S: 拿封好的字节
+  S-->>R: 封好的字节
+  R->>R: 用密钥打开
+"
+/>
+
+## 密钥放哪的两种方式
+
+**放在链接里。** 密钥写在分享网址的 `#` 后面。浏览器从来不会把那段发给服务器,所以拿到整条链接的人打得开,只拿到取件码的人打不开。
+
+**从密码来。** 密钥是从一组密码推出来的,所以取件码加密码就够了,两个都能用电话念。
+
+<Callout type="error" title="从密码来的密钥有两个代价">
+拿到存着的字节的人可以离线猜密码,所以密码至少要 12 个字,客户端在上传之前就会挡掉更短的。而且因为密钥是从它来的,这种分享的密码永远不能改,也不能拿掉。
+</Callout>
+
+## 藏住的,和没藏住的
+
+| 藏住的 | 没藏住的 |
+|---|---|
+| 内容 | 每个文件多大 |
+| 文件名和类型 | 有几个文件 |
+| 标题 | 什么时候建的、什么时候过期 |
+| 文本分享的语言 | 被拿了几次、从哪里拿的 |
+
+右边那栏是这台机器执行配额、期限和次数限制要用到的。
+
+## 不一样的地方
+
+- **好几个文件会一个一个来**,不会打包。压缩包要从服务器读不到的内容组出来。
+- **链接预览**只写它是端对端加密的,以及大小。
+- **扫毒会跳过它。** 扫毒软件什么都读不到。见[扫毒](/zh-CN/docs/scanning)。
+- **文本不能从纯文本链接直接开**,要先由客户端解密。
+
+## 用命令行
+
+`tessera` 这个命令可以发和拿分享,加不加密都行。它是从 repo 里的 `apps/cli` 编出来的,目前还没有打包好的发布版。
+
+```bash
+tessera send --server https://files.example.com --encrypt holiday/*.jpg
+tessera send --server https://files.example.com --encrypt --password report.pdf
+echo "一段笔记" | tessera send --server https://files.example.com -
+tessera get 'https://files.example.com/s/0ZPQ4M7K#…' -o downloads/
+```
+
+`--password` 会问你密码,而不是在命令上直接给(那样 `ps` 看得到),也可以读 `TESSERA_PASSWORD`。没加 `--encrypt` 的话,它设的是普通的分享密码。`--server` 和 `--token` 可以从 `TESSERA_SERVER` 和 `TESSERA_TOKEN` 来;没有 token 就是匿名上传。`--expires` 吃小时数,`--max-uses` 吃次数。
+
+上传断线之后会接着传。`get` 只保留每个文件名里普通的路径段,所以文件写不到你指定的目录以外,而且不会覆盖已经存在的文件。
+
+## 接下来
+
+<Cards>
+  <Card title="分享" href="/zh-CN/docs/shares" description="取件码、次数与期限" />
+  <Card title="你的数据在哪里" href="/zh-CN/docs/your-data" description="这台机器握有一个人的哪些东西" />
+</Cards>

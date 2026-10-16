@@ -1,0 +1,203 @@
+---
+title: 开始
+description: 跑起来,然后登录
+icon: Rocket
+---
+
+tessera 是一个自建的文件传递工具。上传一个文件,拿到一组取件码,把码给对方。
+
+<Shots>
+  <Shot name="home" alt="上传页">
+    上传页:拖放文件、粘贴文字或加一条链接
+  </Shot>
+  <Shot name="result" alt="上传完成后的页面">
+    上传后:链接、二维码、期限
+  </Shot>
+</Shots>
+
+## 跑起来
+
+<Steps>
+<Step>
+
+### 拉镜像
+
+```bash
+docker pull ghcr.io/limatura/tessera:latest
+```
+
+`:latest` 是最新的 release,`:sha-<commit>` 钉住某一次构建。amd64 和 arm64 都有出,所以 Pi 和 NAS 跑得起来。
+
+要自己构建的话,`docker build -f apps/server/Dockerfile -t tessera .` 会连前端一起编进去。
+
+</Step>
+<Step>
+
+### 跑起来
+
+<Tabs items={["docker run", "Docker Compose", "Compose 5.3+"]}>
+<Tab value="docker run">
+
+```bash
+docker run -p 12923:12923 -v tessera-data:/data ghcr.io/limatura/tessera:latest
+```
+
+数据放在名为 `tessera-data` 的 named volume。Docker 第一次运行时会自动创建,服务器也已经有写入权限。想把数据放在自己指定的目录,请用 Docker Compose 标签页。
+
+</Tab>
+<Tab value="Docker Compose">
+
+存成 `compose.yaml`:
+
+```yaml
+services:
+  init-data:
+    image: busybox:1.37
+    command: chown -R 65532:65532 /data
+    volumes:
+      - ./data:/data
+
+  tessera:
+    image: ghcr.io/limatura/tessera:latest
+    depends_on:
+      init-data:
+        condition: service_completed_successfully
+    ports:
+      - "12923:12923"
+    volumes:
+      - ./data:/data
+    init: true
+    restart: unless-stopped
+```
+
+然后在后台启动:
+
+```bash
+docker compose up -d
+```
+
+之后要更新,运行 `docker compose pull && docker compose up -d`。
+
+volume 是 compose 文件旁边的 `./data`。Tessera 以非 root 用户(uid 65532)运行,所以一次性的 `init-data` 服务会先以 root 把目录交给它,然后退出;Tessera 会等它完成。每次 `up` 都会再跑一次,只有这个用完即弃的容器是 root。
+
+如果 `./data` 在带有 `root_squash` 的 NFS 上,`chown` 会失败。改用 named volume(`tessera-data:/data`,并在顶层加 `volumes: {tessera-data: {}}`),或在 `tessera` 上设 `user: "<uid>:<gid>"` 对齐目录的所有者。
+
+</Tab>
+<Tab value="Compose 5.3+">
+
+Docker Compose 5.3 以上可以用 `pre_start` 在单个服务里做同一件事。用 `docker compose version` 检查;较旧的版本会用 `additional properties 'pre_start' not allowed` 拒绝这个文件。
+
+```yaml
+services:
+  tessera:
+    image: ghcr.io/limatura/tessera:latest
+    ports:
+      - "12923:12923"
+    volumes:
+      - ./data:/data
+    init: true
+    restart: unless-stopped
+    pre_start:
+      - image: busybox
+        user: root
+        command: chown -R 65532:65532 /data
+```
+
+定义没变的话,之后的 `up` 会跳过 `pre_start` 这一步。
+
+</Tab>
+</Tabs>
+
+</Step>
+<Step>
+
+### 从日志里拿管理员密码
+
+镜像的日志是 JSON,一行一个对象。用这个找出来:
+
+```bash
+docker logs <container> 2>&1 | grep password
+```
+
+用 Compose 的话,改运行 `docker compose logs tessera 2>&1 | grep password`。
+
+那一行长这样:
+
+```json
+{
+  "timestamp": "…",
+  "level": "WARN",
+  "message": "created the first administrator with a generated password; sign in and change it",
+  "username": "admin",
+  "password": "1e3bc629…",
+  "target": "tessera_server::auth::bootstrap"
+}
+```
+
+<Callout type="warn" title="这行只打印一次">
+  之后重启不会再打印。错过的话用 [`reset-password`](/zh-CN/docs/accounts#命令)
+  再设一次。
+</Callout>
+
+</Step>
+<Step>
+
+### 登录,然后换掉密码
+
+系统会一直挡着你,直到换掉为止。
+
+</Step>
+</Steps>
+
+## /data 里有什么
+
+<Files>
+  <Folder name="data" defaultOpen>
+    <File name="tessera.db" />
+    <File name="secret.key" />
+    <Folder name="blobs">
+      <File name="01K1ZQK9V8…" />
+    </Folder>
+  </Folder>
+</Files>
+
+`blobs` 是上传的文件本体,直到你加了别的地方放文件为止。`secret.key` 用来加密存在数据库里的凭证:存储 backend 的地址、发信密码、第三方登录的 secret。
+
+<Callout type="error" title="secret.key 要跟数据库一起备份">
+  没有它还原回来的数据库照样开得起来,但里面每一个封起来的凭证都读不出来,要全部重新输入。见[配置](/zh-CN/docs/configuration#封住凭证的那把密钥)。
+</Callout>
+
+配置不在卷里。它们来自环境变量,以及同一个网址的 `/admin/` 后台。
+
+<Callout type="warn">没有把 `/data` 挂出来的话,容器一重建东西就没了。</Callout>
+
+## 接下来
+
+<Cards>
+  <Card
+    title="分享"
+    href="/zh-CN/docs/shares"
+    description="上传、取件码、次数与期限"
+  />
+  <Card
+    title="配置"
+    href="/zh-CN/docs/configuration"
+    description="配置从哪里来,谁覆盖谁"
+  />
+  <Card
+    title="反向代理"
+    href="/zh-CN/docs/reverse-proxy"
+    description="放在 nginx / Caddy / Cloudflare 后面就要看这页"
+  />
+  <Card
+    title="账号"
+    href="/zh-CN/docs/accounts"
+    description="注册策略、忘记密码"
+  />
+  <Card
+    title="邮件"
+    href="/zh-CN/docs/email"
+    description="可选。开了之后注册流程会不一样"
+  />
+  <Card title="API" href="/zh-CN/docs/api" description="端点参考,从契约生成" />
+</Cards>

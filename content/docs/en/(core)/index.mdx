@@ -1,0 +1,212 @@
+---
+title: Getting started
+description: Run it, then sign in
+icon: Rocket
+---
+
+tessera is a self-hosted file courier. Upload a file, get a retrieval code, hand the code to whoever needs it.
+
+<Shots>
+  <Shot name="home" alt="The upload page">
+    Upload page: drop files, paste text, or add a link
+  </Shot>
+  <Shot name="result" alt="The page shown after uploading">
+    After uploading: link, QR code, expiry
+  </Shot>
+</Shots>
+
+## Run it
+
+<Steps>
+<Step>
+
+### Pull the image
+
+```bash
+docker pull ghcr.io/limatura/tessera:latest
+```
+
+`:latest` is the newest release, and `:sha-<commit>` pins one build. amd64 and arm64 are both published, so a Pi or a NAS works.
+
+To build it yourself instead, `docker build -f apps/server/Dockerfile -t tessera .` compiles the frontend in as well.
+
+</Step>
+<Step>
+
+### Start it
+
+<Tabs items={["docker run", "Docker Compose", "Compose 5.3+"]}>
+<Tab value="docker run">
+
+```bash
+docker run -p 12923:12923 -v tessera-data:/data ghcr.io/limatura/tessera:latest
+```
+
+The data lives in a named volume, `tessera-data`. Docker creates it on first run and it is already writable by the server. To keep the data in a directory you choose instead, use the Docker Compose tab.
+
+</Tab>
+<Tab value="Docker Compose">
+
+Save this as `compose.yaml`:
+
+```yaml
+services:
+  init-data:
+    image: busybox:1.37
+    command: chown -R 65532:65532 /data
+    volumes:
+      - ./data:/data
+
+  tessera:
+    image: ghcr.io/limatura/tessera:latest
+    depends_on:
+      init-data:
+        condition: service_completed_successfully
+    ports:
+      - "12923:12923"
+    volumes:
+      - ./data:/data
+    init: true
+    restart: unless-stopped
+```
+
+Start it in the background:
+
+```bash
+docker compose up -d
+```
+
+To update later, run `docker compose pull && docker compose up -d`.
+
+The volume is `./data`, next to the compose file. Tessera runs as a non-root user (uid 65532), so the one-shot `init-data` service first runs as root to hand that directory over, then exits; Tessera waits for it. It runs again on every `up`, and only that throwaway container is root.
+
+If `./data` is on NFS with `root_squash`, the `chown` fails. Use a named volume instead (`tessera-data:/data`, plus a top-level `volumes: {tessera-data: {}}`), or set `user: "<uid>:<gid>"` on `tessera` to match the directory's owner.
+
+</Tab>
+<Tab value="Compose 5.3+">
+
+Docker Compose 5.3 or later can do the same in one service with `pre_start`. Check with `docker compose version`; older versions reject the file with `additional properties 'pre_start' not allowed`.
+
+```yaml
+services:
+  tessera:
+    image: ghcr.io/limatura/tessera:latest
+    ports:
+      - "12923:12923"
+    volumes:
+      - ./data:/data
+    init: true
+    restart: unless-stopped
+    pre_start:
+      - image: busybox
+        user: root
+        command: chown -R 65532:65532 /data
+```
+
+Compose skips the `pre_start` step on later `up` runs while its definition is unchanged.
+
+</Tab>
+</Tabs>
+
+</Step>
+<Step>
+
+### Take the admin password from the log
+
+The image logs JSON, one object per line. Pick it out with:
+
+```bash
+docker logs <container> 2>&1 | grep password
+```
+
+With Compose, use `docker compose logs tessera 2>&1 | grep password`.
+
+The line looks like this:
+
+```json
+{
+  "timestamp": "…",
+  "level": "WARN",
+  "message": "created the first administrator with a generated password; sign in and change it",
+  "username": "admin",
+  "password": "1e3bc629…",
+  "target": "tessera_server::auth::bootstrap"
+}
+```
+
+<Callout type="warn" title="This line is printed once">
+  Restarts will not print it again. If you miss it, set a new one with
+  [`reset-password`](/en/docs/accounts#from-the-command-line).
+</Callout>
+
+</Step>
+<Step>
+
+### Sign in, then change the password
+
+You will be blocked from everything else until you do.
+
+</Step>
+</Steps>
+
+## What ends up in /data
+
+<Files>
+  <Folder name="data" defaultOpen>
+    <File name="tessera.db" />
+    <File name="secret.key" />
+    <Folder name="blobs">
+      <File name="01K1ZQK9V8…" />
+    </Folder>
+  </Folder>
+</Files>
+
+`blobs` holds the uploaded content until you add somewhere else to keep it. `secret.key` encrypts the credentials stored in the database: storage backend addresses, the mail password, sign-in providers' secrets.
+
+<Callout type="error" title="Back up secret.key with the database">
+  A database restored without it still opens, but every sealed credential in it
+  is unreadable and has to be entered again. See
+  [configuration](/en/docs/configuration#the-key-that-seals-credentials).
+</Callout>
+
+Settings are not in the volume. They come from the environment and from the admin panel, at `/admin/` on the same address.
+
+<Callout type="warn">
+  Without a volume on `/data`, everything is gone the next time the container is
+  rebuilt.
+</Callout>
+
+## Next
+
+<Cards>
+  <Card
+    title="Shares"
+    href="/en/docs/shares"
+    description="Uploading, retrieval codes, use counts and expiry"
+  />
+  <Card
+    title="Configuration"
+    href="/en/docs/configuration"
+    description="Where settings come from and what overrides what"
+  />
+  <Card
+    title="Reverse proxy"
+    href="/en/docs/reverse-proxy"
+    description="Read this before putting it behind nginx / Caddy / Cloudflare"
+  />
+  <Card
+    title="Accounts"
+    href="/en/docs/accounts"
+    description="Registration policy, forgotten passwords"
+  />
+  <Card
+    title="Email"
+    href="/en/docs/email"
+    description="Optional. Turning it on changes registration"
+  />
+  <Card
+    title="API"
+    href="/en/docs/api"
+    description="Endpoint reference, generated from the contract"
+  />
+</Cards>

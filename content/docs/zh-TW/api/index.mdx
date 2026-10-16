@@ -1,0 +1,48 @@
+---
+title: 關於這一節
+description: 端點參考是從契約產生的
+icon: Braces
+---
+
+底下的端點頁是從 tessera 的 `openapi.json` 產生的,所以是英文,而且跟著後端走。契約本身也是產生的,CI 會比對產生結果和 commit 進去的有沒有差,所以它不會落後於程式碼。
+
+## 拿契約
+
+server 無條件在 `/openapi.json` 送出契約,不需要開任何設定。要產生 client 就打這條。
+
+```bash
+curl http://localhost:12923/openapi.json
+```
+
+`features.docs` 是另一回事,它只決定要不要在 `/docs` 多掛一個瀏覽用的 UI,預設關著。關掉不會讓契約消失。
+
+<Callout type="warn" title="那個 UI 的畫面是去 CDN 拿的">
+  `features.docs` 開著的時候,`/docs` 那頁的 JavaScript 是瀏覽器向外部 CDN
+  要的。完全離線的環境會看到空白頁。
+</Callout>
+
+## 認證
+
+三種,端點頁上會標。
+
+| 方式 | 怎麼帶 |
+| --- | --- |
+| session | `POST /api/v1/auth/login` 設的 `tessera_session` cookie。`HttpOnly`,頁面上的 script 讀不到也設不了 |
+| bearer | 在帳號頁或用 `POST /api/v1/tokens` 產生的 `tsk_` 開頭權杖,放 `Authorization: Bearer` |
+| 不用 | 公開端點。上傳在 `features.anonymous_upload` 開著時也算 |
+
+## 權杖能做什麼
+
+權杖有自己的權限,實際生效的是權杖和它主人的交集。主人被降權,他手上的權杖同一刻就跟著窄掉。
+
+建立時不帶 `permissions` 只會拿到 `shares:create`,不是「這個帳號能做的全部」。權杖是拿來上傳的,預設給整個帳號的話,每一個截圖工具和備份腳本都能刪掉主人的所有東西。
+
+要一個呼叫者自己沒有的權限會被回 `403`。
+
+<Callout type="error" title="API 權杖只出現一次">
+  建立時回一次,之後只留雜湊。弄丟就撤銷掉再開一個。
+</Callout>
+
+## 不在這裡的東西
+
+`/s/<碼>/raw` 和 `/s/<碼>/download` 不在契約裡。那兩條是連結指向的地方,不是 API,而且形狀不能再改,有人會把它貼進聊天室、印出來、丟給 `curl`。用法見[分享](/zh-TW/docs/shares#取件)。

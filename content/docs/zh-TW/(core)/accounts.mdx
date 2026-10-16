@@ -1,0 +1,172 @@
+---
+title: 帳號
+description: 註冊政策、忘記密碼
+icon: Users
+---
+
+## 註冊政策
+
+`auth.registration` 是 `open`、`invite` 或 `closed`,在後台設。
+
+`invite` 要有管理員發的碼,註冊時放在 `invite_code`。
+
+沒有設定寄信的話,註冊當下就建立帳號並登入。設定了的話帳號要等對方點連結才存在,見[寄信](/zh-TW/docs/email)。
+
+第一個存在的帳號會成為管理員,也就是第一次啟動時自動建立的那個。
+
+## 角色
+
+權限來自角色。一個帳號只有一個角色,內建四個:
+
+| 角色 | 能做什麼 |
+|---|---|
+| `owner` | 全部 |
+| `admin` | 帳號、邀請碼,以及看這台機器上有什麼。不能刪帳號、不能刪別人的分享、不能改角色 |
+| `member` | 上傳,以及管理自己上傳的 |
+| `guest` | 登入了,什麼都不能做 |
+
+新帳號會進 `auth.default_role`,不改的話是 `member`。那個角色必須存在,否則伺服器拒絕啟動。打錯字在開機時就被抓到,不會變成某個陌生人註冊時的錯誤。
+
+<Callout title="要收緊就給別的角色,不要去改 member">
+內建角色是鎖住的。要讓一般使用者能做的事少一點,把 `auth.default_role` 指到你自己建的角色。
+</Callout>
+
+最後一個持有 `roles:write` 的帳號不能被刪也不能被降權。
+
+## 帳號狀態
+
+| 狀態 | 意思 |
+|---|---|
+| `active` | 正常 |
+| `disabled` | 停權。人被擋下來,他的內容沒有 |
+| `deleted` | 已刪除,那一列被洗乾淨。見[你的資料在哪裡](/zh-TW/docs/your-data) |
+
+停權是讓人登不進來。他的分享會繼續送,因為拿著那些連結的人沒有做錯什麼。要連內容一起停,管理員去停那些分享本身。
+
+<Mermaid
+  chart="
+stateDiagram-v2
+  [*] --> active
+  active --> disabled: 停權
+  disabled --> active: 恢復
+  active --> deleted: 刪除
+"
+/>
+
+## 改自己的帳號
+
+你可以改自己的名稱或地址,也可以刪掉自己的帳號。兩件事都會先要你輸入現在的密碼。
+
+<Callout type="warn" title="API 權杖兩個都不能做">
+兩件事都不能用 API 權杖做,只能在登入的狀態下。
+</Callout>
+
+刪掉帳號會連你上傳的東西一起結束,除非你選擇讓已經發出去的連結繼續能用。
+
+改了地址,它的驗證狀態就會清掉。有設定[寄信](/zh-TW/docs/email)的話可以要一封新的驗證信;信裡的連結只證明寄出時那個地址,所以這期間又改了地址,它就沒用了。
+
+## 密碼
+
+預設最少 8 個字(`auth.password.min_length`)。機器也可以要求大小寫混用、要有數字或要有符號,三個預設都關。規則只在設密碼的時候檢查,用的時候不檢查,所以收緊規則永遠不會把現有的帳號鎖在外面。
+
+### 檢查有沒有外洩過
+
+`auth.pwned.enabled` 開著的話,每一組新密碼都會拿去 Have I Been Pwned 比對,出現在已知外洩資料裡就會被拒絕。
+
+<Callout title="什麼會離開這台機器">
+密碼 SHA-1 雜湊的前五個字,沒有別的。比對在這裡做。三秒內連不上服務的話,密碼會被放行並記一行 log。`auth.pwned.url` 可以指到你自己架的鏡像。
+</Callout>
+
+用 GitHub、Discord 或你自己的身分提供者登入,在另一頁:[用別的帳號登入](/zh-TW/docs/sign-in)。
+
+## 兩步驟驗證
+
+用密碼登入的人,可以在帳號頁加一個驗證器 App。加了之後,用密碼登入還要再輸入 App 上的 6 位數驗證碼,輸完密碼後 5 分鐘內要輸入。
+
+- 要先輸入一次 App 的驗證碼才會生效,設定到一半出錯不會把自己鎖在外面。
+- 會給 10 組備用碼,只顯示一次。每組只能用一次,可以代替驗證碼。重新產生之後,舊的就失效。
+- 關掉或重新產生備用碼,要輸入密碼或驗證碼。API 權杖兩件事都做不到。
+- 只有密碼登入會問驗證碼。用 GitHub、Discord 或自己的身分提供者登入不會問,那邊有自己的第二步。
+
+<Callout type="warn" title="輸錯驗證碼是按帳號計算">
+錯太多次,這個帳號會被擋一陣子,不管從哪個位址來。會在這一步亂猜的人已經有密碼了,快去改密碼。
+</Callout>
+
+App 和備用碼都弄丟的人,管理員可以從後台幫他重設,使用者清單會顯示誰開了兩步驟驗證。如果是唯一的管理員自己,在機器上跑:
+
+```bash
+tessera-server reset-mfa -u admin
+```
+
+服務停著也能用。之後這個帳號只用密碼登入。
+
+## 通行密鑰
+
+通行密鑰讓你用指紋、臉或裝置的 PIN 登入,不用輸密碼。在帳號頁新增。一個帳號可以有好幾把,每把都能取名、改名。用通行密鑰登入算是兩步都完成了,不會再問驗證碼。
+
+<Callout type="warn" title="通行密鑰綁在一個網址上">
+它綁的是 `server.public_url` 的主機名稱,沒設的話就是瀏覽器上的網址。把這台搬到別的網域,所有通行密鑰都會失效,大家得用別的方式登入再重新加。在有人加通行密鑰之前,先把 `server.public_url` 設好。
+</Callout>
+
+帳號不能拿掉最後一個登入方式,通行密鑰也算一個。
+
+## 忘記密碼
+
+### 指令
+
+不需要網路,服務停著也能用。唯一的管理員進不去的時候用這個。
+
+<Tabs items={["直接跑", "Docker"]}>
+<Tab value="直接跑">
+
+```bash
+tessera-server reset-password -u admin
+```
+
+</Tab>
+<Tab value="Docker">
+
+```bash
+docker exec -it <容器> tessera-server reset-password -u admin
+```
+
+<Callout type="warn" title="-it 不能省">
+  沒有終端機的話它不會問你,會改成產生一組印出來。
+</Callout>
+
+</Tab>
+</Tabs>
+
+在終端機上問你新密碼,不回顯,要打兩次。打錯的話什麼都不會改。
+
+其他寫法:
+
+- **`--password-stdin`** 從管道讀。自動化用這個。
+- **`--generate`** 產生一組印出來,並要求下次登入時更換。
+- **`-p <值>`** 直接給。
+
+<Callout type="error" title="-p 會外洩">
+  指令執行期間 `ps` 看得到那串密碼,同一台機器上任何使用者都讀得到,而且它會留在
+  shell 歷史裡。自動化請用 `--password-stdin`。
+</Callout>
+
+沒有終端機又沒給旗標的時候(腳本、cron)會產生一組印出來。所以用管道餵密碼但忘了加 `--password-stdin`,設到的會是產生的那組:
+
+```
+Password for `admin` set to:
+
+    0cae83d5ad2ca901d5163bf712eef39fb355d0fe1a9ebd2ff094c7b0b053816a
+
+Sign in with it and choose a new one — this account is now marked as owing a change.
+
+There was no terminal to ask at, so this one was chosen here.
+If you meant to supply one, pass it with --password-stdin.
+```
+
+<Callout>
+  能對資料庫跑這個指令的人可以拿走任何帳號。拿得到資料庫檔案的人本來就做得到同樣的事。
+</Callout>
+
+### 寄信
+
+要先[設定寄信](/zh-TW/docs/email)。前端要有 `/reset-password` 這條路由才點得下去。

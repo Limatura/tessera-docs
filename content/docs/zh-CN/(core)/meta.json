@@ -1,0 +1,20 @@
+{
+  "title": "核心",
+  "description": "核心文档",
+  "icon": "BookOpen",
+  "root": true,
+  "pages": [
+    "index",
+    "shares",
+    "encryption",
+    "configuration",
+    "storage",
+    "scanning",
+    "accounts",
+    "sign-in",
+    "your-data",
+    "administration",
+    "email",
+    "reverse-proxy"
+  ]
+}

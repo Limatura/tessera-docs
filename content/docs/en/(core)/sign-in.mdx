@@ -1,0 +1,123 @@
+---
+title: Signing in with another account
+description: OpenID Connect, GitHub and Discord. Off by default
+icon: KeyRound
+---
+
+People can sign in through an identity provider instead of, or as well as, a password. Three kinds are supported:
+
+- **OpenID Connect**, for a provider you run or your organisation runs: Authentik, Keycloak, Authelia, Synology SSO, Entra ID and the like.
+- **GitHub**, including GitHub Enterprise Server.
+- **Discord.**
+
+All three are off until configured, and all three are set up in the admin panel. Client secrets are sealed like every other credential there and never shown again.
+
+## Setting one up
+
+<Steps>
+<Step>
+
+### Set `server.public_url`
+
+The address the provider sends people back to is built from it, and sign-in refuses to start without it. Use the address people type into their browser, such as `https://files.example.com`.
+
+</Step>
+<Step>
+
+### Register this instance with the provider
+
+Give it this callback address, with `oidc`, `github` or `discord` at the end of the path:
+
+```
+https://files.example.com/api/v1/auth/oidc/callback
+```
+
+Providers compare it character for character, so it has to match `server.public_url` exactly.
+
+</Step>
+<Step>
+
+### Fill in the panel
+
+For OpenID Connect, the issuer, the client ID and the secret; the panel can read the provider's discovery document and fill in what it can. For GitHub and Discord, the client ID and the secret.
+
+</Step>
+</Steps>
+
+The scopes default to what each needs: `openid email profile` for OpenID Connect, `read:user user:email` for GitHub, `identify email` for Discord. Removing the one that grants an address stops the instance from starting, because every sign-in would fail without it.
+
+<Mermaid
+  chart="
+sequenceDiagram
+  participant V as Visitor
+  participant T as tessera
+  participant P as Provider
+  V->>T: Choose a provider
+  T->>V: Redirect to the provider
+  V->>P: Sign in and approve
+  P->>T: Send the visitor back to the callback URL
+  T->>T: Match or create the account by policy
+  T-->>V: Signed in
+"
+/>
+
+## Who gets an account
+
+Each provider decides separately whether a first sign-in creates an account:
+
+| | |
+|---|---|
+| **Inherit** (default) | Follows `auth.registration`, invitations included. The same as signing up with a password |
+| **Always** | Anybody the provider lets through gets an account, whatever `auth.registration` says and without an invitation |
+| **Never** | Only existing accounts, and ones that attached this provider themselves, can sign in this way |
+
+<Callout type="error" title="Always on GitHub or Discord means anyone">
+Neither has groups to narrow it down, so every GitHub or Discord account in the world can make one here.
+</Callout>
+
+With OpenID Connect, a required group narrows it: set one, and only people whose `groups` claim (or the claim you name) includes it are let in. Leave it empty and everybody the provider admits is admitted.
+
+Three common shapes:
+
+| | Registration | Match by address | Required group |
+|---|---|---|---|
+| One person, own NAS | closed | off | empty |
+| A few friends | invite | on | empty |
+| A small team behind single sign-on | open | on | set |
+
+The last row has a stricter variant: close registration and set the provider to always. Then there is no sign-up form at all, and the identity provider alone decides who gets in.
+
+## Joining up with existing accounts
+
+Somebody who already has an account with a password can attach a provider from their account settings, and detach it again.
+
+Matching on the email address does the same thing automatically on first sign-in. It is off by default, and for OpenID Connect it has three levels:
+
+- **Never**: no address links anything.
+- **When verified**: the provider has to say the address is verified.
+- **Always**: whatever the provider says.
+
+<Callout type="error" title="Always is how strangers take over accounts">
+A provider that lets anybody sign up with any address becomes a way into accounts here. Use it only for a provider that you run and that hands out the addresses itself. Some providers never say whether an address is verified (Synology SSO, Entra ID for work accounts), which is the only reason this level exists.
+</Callout>
+
+GitHub and Discord never hand over an unverified address, so for them it is a plain on or off.
+
+## Names
+
+A new account's name comes from what the provider offers, first usable one wins: the preferred username, then the part of the address before the `@`, then the display name. It is cleaned up to fit the rules rather than refused, and a name already taken gets a number added, so `alice` becomes `alice2`.
+
+## Getting locked out
+
+An account cannot detach its only way in. If it has no password, no passkey and one provider, that provider stays attached.
+
+If the provider itself goes away, `tessera-server reset-password` on the machine gives the account a password, even one that never had one. See [accounts](/en/docs/accounts#from-the-command-line).
+
+When an OpenID Connect provider signs somebody out and supports back-channel logout, their session here ends too.
+
+## Next
+
+<Cards>
+  <Card title="Accounts" href="/en/docs/accounts" description="Passwords, roles and account states" />
+  <Card title="Reverse proxy" href="/en/docs/reverse-proxy" description="What the callback address has to survive" />
+</Cards>

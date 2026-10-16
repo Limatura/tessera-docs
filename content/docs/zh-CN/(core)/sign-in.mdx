@@ -1,0 +1,123 @@
+---
+title: 用别的账号登录
+description: OpenID Connect、GitHub 和 Discord。默认关
+icon: KeyRound
+---
+
+除了密码,大家也可以通过一个身份提供者登录,两种并用也行。支持三种:
+
+- **OpenID Connect**,给你自己或你的组织架的提供者:Authentik、Keycloak、Authelia、Synology SSO、Entra ID 这一类。
+- **GitHub**,包括 GitHub Enterprise Server。
+- **Discord。**
+
+三种都要配置过才会开,也都在后台设。client secret 跟后台里其他凭证一样是封起来存的,存了之后不会再显示。
+
+## 配置一个
+
+<Steps>
+<Step>
+
+### 设好 `server.public_url`
+
+提供者把人送回来的网址是用它组出来的,没有它登录根本不会开始。填大家在浏览器打的那个网址,例如 `https://files.example.com`。
+
+</Step>
+<Step>
+
+### 到提供者那边注册这台机器
+
+给它这个回调网址,路径最后按提供者换成 `oidc`、`github` 或 `discord`:
+
+```
+https://files.example.com/api/v1/auth/oidc/callback
+```
+
+提供者会一个字一个字比对,所以它必须跟 `server.public_url` 完全一致。
+
+</Step>
+<Step>
+
+### 在后台填好
+
+OpenID Connect 要填 issuer、client ID 和 secret;后台可以读提供者的 discovery 文档,把能填的先填好。GitHub 和 Discord 要填 client ID 和 secret。
+
+</Step>
+</Steps>
+
+scope 默认就是每一家需要的:OpenID Connect 是 `openid email profile`,GitHub 是 `read:user user:email`,Discord 是 `identify email`。把拿得到 email 的那一个拿掉,机器会拒绝启动,因为少了它每一次登录都会失败。
+
+<Mermaid
+  chart="
+sequenceDiagram
+  participant V as 访客
+  participant T as tessera
+  participant P as 提供者
+  V->>T: 选一个提供者
+  T->>V: 跳转到提供者
+  V->>P: 登录并同意
+  P->>T: 把人送回回调地址
+  T->>T: 按策略对应或创建账号
+  T-->>V: 登录完成
+"
+/>
+
+## 谁可以拿到账号
+
+每一家提供者各自决定第一次登录要不要建账号:
+
+| | |
+|---|---|
+| **跟着注册策略**(默认) | 照 `auth.registration`,包括邀请码。跟用密码注册一样 |
+| **一律** | 提供者放行的人就拿到账号,不管 `auth.registration` 怎么设,也不用邀请码 |
+| **一律不** | 只有已经存在的账号,以及自己绑过这个提供者的账号,能用这条路登录 |
+
+<Callout type="error" title="GitHub 或 Discord 设成一律,等于谁都可以">
+这两家没有群组可以缩小范围,所以全世界任何一个 GitHub 或 Discord 账号都能在这里开一个。
+</Callout>
+
+OpenID Connect 可以用必要群组缩小范围:设了之后,只有 `groups` claim(或你指定的那个 claim)里有它的人进得来。留空就是提供者放行的人全部放行。
+
+三种常见的样子:
+
+| | 注册 | 用地址对应 | 必要群组 |
+|---|---|---|---|
+| 一个人,自己的 NAS | closed | 关 | 空 |
+| 几个朋友 | invite | 开 | 空 |
+| 一个躲在单点登录后面的小团队 | open | 开 | 有设 |
+
+最后一种有一个更严的版本:把注册关掉,提供者设成一律。这样根本没有注册表单,谁进得来完全由身份提供者决定。
+
+## 跟已有的账号接起来
+
+已经有密码账号的人,可以在自己的账号设置里绑一个提供者,也可以再解开。
+
+用 email 地址对应,是在第一次登录时自动做同一件事。默认关,OpenID Connect 有三段:
+
+- **不对应**:任何地址都不会接起来。
+- **验证过才对应**:提供者要说这个地址验证过。
+- **一律对应**:提供者说什么就是什么。
+
+<Callout type="error" title="一律对应就是陌生人接管账号的方法">
+一个让任何人用任何地址注册的提供者,会变成进入这里账号的入口。只对你自己架、而且地址是它自己发的提供者用。有些提供者从来不讲地址有没有验证过(Synology SSO、Entra ID 的公司账号),这一段只是为了它们存在。
+</Callout>
+
+GitHub 和 Discord 从来不交出没验证过的地址,所以对它们来说只有开或关。
+
+## 名字
+
+新账号的名字从提供者给的东西里挑,第一个能用的胜出:偏好的用户名、`@` 前面那段地址、显示名称。不符规则的会被修到符合,而不是被拒绝;已经被用掉的名字会加一个数字,`alice` 变成 `alice2`。
+
+## 被锁在外面
+
+账号不能解开它唯一的登录方式。没有密码、没有通行密钥、只绑了一个提供者的账号,那个提供者会一直绑着。
+
+如果提供者本身不见了,在机器上跑 `tessera-server reset-password` 可以给那个账号一组密码,就算它从来没有过密码也可以。见[账号](/zh-CN/docs/accounts#命令)。
+
+OpenID Connect 提供者把人登出、而且支持 back-channel logout 的话,他在这里的 session 也会一起结束。
+
+## 接下来
+
+<Cards>
+  <Card title="账号" href="/zh-CN/docs/accounts" description="密码、角色和账号状态" />
+  <Card title="反向代理" href="/zh-CN/docs/reverse-proxy" description="回调网址要撑过的东西" />
+</Cards>

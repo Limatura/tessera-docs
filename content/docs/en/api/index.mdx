@@ -1,0 +1,49 @@
+---
+title: About this section
+description: The endpoint reference is generated from the contract
+icon: Braces
+---
+
+The endpoint pages below are generated from tessera's `openapi.json`, so they follow the backend rather than being written here. The contract itself is generated too, and CI fails if it differs from what is committed, so it does not fall behind the code.
+
+## Getting the contract
+
+The server publishes it at `/openapi.json` unconditionally. Nothing has to be enabled. Point a client generator at it:
+
+```bash
+curl http://localhost:12923/openapi.json
+```
+
+`features.docs` is a separate thing. It only decides whether a browsable UI is mounted at `/docs`, and it is off by default. Turning it off does not hide the contract.
+
+<Callout type="warn" title="That UI loads its assets from a CDN">
+  With `features.docs` on, the JavaScript for `/docs` is fetched by the browser
+  from an external CDN. A fully offline instance shows a blank page.
+</Callout>
+
+## Authentication
+
+Three ways, marked on each endpoint page.
+
+| Method | How to send it |
+| --- | --- |
+| session | The `tessera_session` cookie set by `POST /api/v1/auth/login`. `HttpOnly`, so page scripts can neither read nor set it |
+| bearer | A `tsk_` token made on your account page or with `POST /api/v1/tokens`, sent as `Authorization: Bearer` |
+| none | Public endpoints. Uploading counts as one while `features.anonymous_upload` is on |
+
+## What a token may do
+
+A token carries its own permissions, and the effective set is the intersection of the token's and its owner's. Demote the owner and every token they hold narrows at the same moment.
+
+Omitting `permissions` at creation gives `shares:create` and nothing else. It is not "everything the account can do", because a token exists to upload, and defaulting to the whole account would mean every screenshot tool and backup script could delete everything its owner has.
+
+Asking for a permission the caller does not hold is refused with `403`.
+
+<Callout type="error" title="An API token is shown once">
+  It comes back at creation and only its digest is kept. Lose it and the only
+  way forward is to revoke it and issue another.
+</Callout>
+
+## What is not here
+
+`/s/<code>/raw` and `/s/<code>/download` are absent from the contract. They are where a link points rather than an API, and their shape can never change, because people paste them into chat, print them, and hand them to `curl`. See [shares](/en/docs/shares#collecting).

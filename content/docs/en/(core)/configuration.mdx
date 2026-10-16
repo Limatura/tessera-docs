@@ -1,0 +1,171 @@
+---
+title: Configuration
+description: Where settings come from and what overrides what
+icon: Settings
+---
+
+Settings live in two places, and they do not overlap.
+
+- **The environment** carries what cannot change while the process runs, plus a few secrets the database must never hold.
+- **The admin panel**, at `/admin/`, carries everything else. It is stored in the database and applied without a restart.
+
+If it is in the panel, changing it works. A setting that would need a restart is shown read-only with the reason.
+
+<Callout type="error" title="There is no config file">
+`tessera.yaml` and `tessera.toml` are not read. An instance still setting `TESSERA_CONFIG_FILE` boots and logs a warning; whatever that file says is ignored.
+</Callout>
+
+## What must come from the environment
+
+**Fixed at boot.** The socket is already bound, the pool is already built, the log subscriber is installed once.
+
+- `server.host`, `server.port`, `server.data_dir`, `server.max_body_bytes`, `server.cors_allowed_origins`, `server.assets_dir`
+- `features.docs`
+- everything under `database.` and `telemetry.`
+
+**Secrets the database must not hold.**
+
+- `database.url`, `auth.admin_password`, `security.secret_key`
+
+Everything else is editable while the instance runs.
+
+## Credentials kept in the panel
+
+Mail relay credentials, the scanner's authorization header, sign-in providers' client secrets and storage backend addresses are set in the panel like anything else. The panel can tell you whether one is set but never shows it again, so anybody able to read settings cannot read a password out of them.
+
+### The key that seals credentials
+
+Those credentials are stored encrypted. The key is `security.secret_key`; leave it empty and the instance generates one on first start and keeps it as `secret.key` in `server.data_dir`.
+
+<Callout type="error" title="Lose the key and every sealed credential is gone">
+Backups of the database are useless for those values without it, and restoring onto a new machine without the key means entering every backend and secret again. Back up `secret.key` with the database, or set `TESSERA_SECURITY__SECRET_KEY` (`openssl rand -hex 32`) and keep it somewhere the backups are not.
+</Callout>
+
+## Writing environment variables
+
+```bash
+TESSERA_SERVER__PORT=9000
+TESSERA_DATABASE__URL=postgres://…
+```
+
+Prefix `TESSERA_`, two underscores for nesting. Lists take commas or a JSON array:
+
+```bash
+TESSERA_SERVER__CORS_ALLOWED_ORIGINS='https://a.example, https://b.example'
+TESSERA_SERVER__CORS_ALLOWED_ORIGINS='["https://a.example","https://b.example"]'
+```
+
+A key that is not a setting stops the process rather than being ignored, so a typo is caught at boot.
+
+For systemd, `EnvironmentFile=` still points at a file. `contrib/tessera.service` in the repository has a working unit.
+
+The main repository has two files to start from: [`tessera.personal.env.example`](https://github.com/Limatura/tessera/blob/main/tessera.personal.env.example) for an instance only you and people you trust use, and [`tessera.public.env.example`](https://github.com/Limatura/tessera/blob/main/tessera.public.env.example) for one strangers can upload to. The comments in them are in Chinese.
+
+## Changing the rest
+
+Three ways into the same store:
+
+<Tabs items={["Admin panel", "Command line", "API"]}>
+<Tab value="Admin panel">
+
+Every setting, with the value in force and where it came from. Ones that can only come from the environment are shown read-only.
+
+</Tab>
+<Tab value="Command line">
+
+```bash
+tessera-server settings list
+tessera-server settings set share.code_length 10
+tessera-server settings reset share.code_length
+```
+
+`set` takes JSON, so a bare word is read as a string. `reset` removes the stored value and lets the layer below decide again. Useful when the panel is switched off.
+
+A running server picks this up only on its next start. `settings reset-all` forgets every stored value, which is the way back when the panel has been used to make the instance unusable.
+
+</Tab>
+<Tab value="API">
+
+`GET /api/v1/admin/settings` lists every setting with its `source` and, when it is not editable, the reason. `PUT` applies changes.
+
+</Tab>
+</Tabs>
+
+## What overrides what
+
+Lowest to highest: **built-in defaults, then the environment, then stored settings**.
+
+<Callout title="Stored settings beat the environment">
+They are the only layer somebody edited on purpose on this instance. A container image sets variables of its own, so letting those win would make the panel a screen that reports success and changes nothing.
+</Callout>
+
+A stored value this version refuses, from a downgrade or a bad edit, is dropped one key at a time and logged. The layer below decides instead, and the rest of the settings survive.
+
+<Callout type="warn" title="Some changes destroy something">
+Shortening a retention window throws away what is already past the new line. The panel refuses until you confirm, and tells you how much would go first.
+</Callout>
+
+<Mermaid
+  chart="
+flowchart LR
+  A[Built-in default] -->|overridden by| B[Environment variable]
+  B -->|overridden by| C[Value saved in the panel]
+  C --> D[Effective value]
+"
+/>
+
+## The ones worth changing first
+
+<TypeTable
+  type={{
+    "server.host": {
+      type: "IP",
+      default: "127.0.0.1",
+      description: "Environment only. Already 0.0.0.0 in the image",
+    },
+    "server.port": { type: "number", default: "12923", description: "Environment only" },
+    "server.data_dir": {
+      type: "path",
+      default: "data",
+      description: "Environment only. Where secret.key and the first backend's folder go. /data in the image",
+    },
+    "server.public_url": {
+      type: "URL",
+      default: "(from each request)",
+      description: "Where the instance is reachable from outside. Third-party sign-in refuses to work without it, and set it if link previews come out blank",
+    },
+    "auth.registration": {
+      type: "open | invite | closed",
+      default: "open",
+      description: "invite needs a code from an administrator",
+    },
+    "auth.default_role": {
+      type: "string",
+      default: "member",
+      description: "Role new accounts land in. Must exist, or the server will not start",
+    },
+    "auth.session_ttl_hours": { type: "number", default: "720", description: "30 days" },
+    "features.anonymous_upload": {
+      type: "boolean",
+      default: "true",
+      description: "Set storage.max_total_bytes alongside it on a public instance",
+    },
+    "features.encryption": {
+      type: "boolean",
+      default: "false",
+      description: "Accept end-to-end encrypted shares",
+    },
+    "features.docs": {
+      type: "boolean",
+      default: "false",
+      description: "Environment only. A browsable API page whose assets the browser fetches from a CDN",
+    },
+    "share.code_length": { type: "number", default: "8" },
+  }}
+/>
+
+<Callout type="error" title="Anonymous uploads with no quota">
+With `features.anonymous_upload` on and `storage.max_total_bytes` unset, anyone who can reach the instance can fill the disk. Start-up warns about it.
+</Callout>
+
+`server.request_timeout_secs` does not apply to uploads. One wall-clock budget cannot both let a 5 GB upload finish and stop a client that connects and sends nothing, so uploads are held to `server.upload_stall_secs` instead: how long they may go without a byte arriving.

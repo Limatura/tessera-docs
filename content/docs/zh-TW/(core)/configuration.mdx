@@ -1,0 +1,171 @@
+---
+title: 設定
+description: 設定從哪裡來,以及誰蓋過誰
+icon: Settings
+---
+
+設定在兩個地方,而且不重疊。
+
+- **環境變數**放跑起來之後改不動的,以及幾個資料庫裡絕對不能有的秘密。
+- **後台**在同一個網址的 `/admin/`,放其他全部。存在資料庫裡,改完不用重開。
+
+後台裡看得到的,改了就會生效。要重開才會生效的設定,會顯示成唯讀並附上原因。
+
+<Callout type="error" title="沒有設定檔">
+`tessera.yaml` 和 `tessera.toml` 不會被讀。還設著 `TESSERA_CONFIG_FILE` 的機器開得起來但會記一句警告,那個檔案裡寫什麼都不算數。
+</Callout>
+
+## 一定要走環境變數的
+
+**開機時就定了。** socket 已經 bind、連線池已經建好、log 的 subscriber 開機只裝一次。
+
+- `server.host`、`server.port`、`server.data_dir`、`server.max_body_bytes`、`server.cors_allowed_origins`、`server.assets_dir`
+- `features.docs`
+- `database.` 和 `telemetry.` 底下的全部
+
+**資料庫裡不能有的秘密。**
+
+- `database.url`、`auth.admin_password`、`security.secret_key`
+
+其他的跑著就能改。
+
+## 放在後台的憑證
+
+寄信中繼的帳密、掃毒服務的授權標頭、第三方登入的 client secret,還有儲存 backend 的位址,都跟其他設定一樣在後台設。後台會告訴你某一個有沒有設,但不會再顯示它,所以讀得到設定的人讀不到密碼。
+
+### 封住憑證的那把金鑰
+
+那些憑證是加密存的。金鑰是 `security.secret_key`;留空的話,機器會在第一次啟動時產生一把,存成 `server.data_dir` 底下的 `secret.key`。
+
+<Callout type="error" title="金鑰弄丟,所有封起來的憑證就沒了">
+沒有它,資料庫的備份對那些值來說沒有用;在新機器上還原卻沒帶金鑰,就要把每一個 backend 和秘密重新輸入一次。`secret.key` 跟資料庫一起備份,或是設 `TESSERA_SECURITY__SECRET_KEY`(`openssl rand -hex 32`)並且放在備份不在的地方。
+</Callout>
+
+## 環境變數怎麼寫
+
+```bash
+TESSERA_SERVER__PORT=9000
+TESSERA_DATABASE__URL=postgres://…
+```
+
+前綴 `TESSERA_`,巢狀用兩個底線。清單可以用逗號,也可以用 JSON 陣列:
+
+```bash
+TESSERA_SERVER__CORS_ALLOWED_ORIGINS='https://a.example, https://b.example'
+TESSERA_SERVER__CORS_ALLOWED_ORIGINS='["https://a.example","https://b.example"]'
+```
+
+不是設定的 key 會讓它停下來,不會默默忽略,所以打錯字在開機時就抓到。
+
+systemd 的 `EnvironmentFile=` 一樣是指一個檔案。repo 裡的 `contrib/tessera.service` 有一份能用的。
+
+主 repo 有兩份可以直接拿來改:只有你和你信任的人用的,從 [`tessera.personal.env.example`](https://github.com/Limatura/tessera/blob/main/tessera.personal.env.example) 開始;開放給陌生人上傳的,從 [`tessera.public.env.example`](https://github.com/Limatura/tessera/blob/main/tessera.public.env.example) 開始。
+
+## 其他的怎麼改
+
+三條路進同一個地方:
+
+<Tabs items={["後台", "指令", "API"]}>
+<Tab value="後台">
+
+每一個設定、現在生效的值,以及它是從哪一層來的。只能走環境變數的會顯示成唯讀。
+
+</Tab>
+<Tab value="指令">
+
+```bash
+tessera-server settings list
+tessera-server settings set share.code_length 10
+tessera-server settings reset share.code_length
+```
+
+`set` 吃 JSON,所以一個裸字會被當成字串。`reset` 把存起來的值拿掉,讓下面那一層重新決定。後台關掉的時候用這個。
+
+正在跑的伺服器要到下次啟動才會讀到。`settings reset-all` 會清掉所有存起來的值,後台被改到整台不能用的時候,用它回到原點。
+
+</Tab>
+<Tab value="API">
+
+`GET /api/v1/admin/settings` 列出每一個設定的 `source`,改不動的會附原因。`PUT` 套用改動。
+
+</Tab>
+</Tabs>
+
+## 誰蓋過誰
+
+由低到高:**內建預設值,然後是環境變數,然後是存起來的設定**。
+
+<Callout title="存起來的設定蓋過環境變數">
+它是唯一有人在這台機器上刻意改過的一層。容器映像檔自己會設幾個變數,讓那些贏的話,後台就變成一個回報成功但什麼都沒改的畫面。
+</Callout>
+
+存起來的值如果這個版本不收(降版或改壞了),會被一個 key 一個 key 地丟掉並記進 log,由下面那一層決定,其他設定不受影響。
+
+<Callout type="warn" title="有些改動會毀掉東西">
+把保存期改短,已經超過新界線的東西就沒了。後台會先拒絕,要你確認,並且先告訴你會丟掉多少。
+</Callout>
+
+<Mermaid
+  chart="
+flowchart LR
+  A[內建預設值] -->|被蓋過| B[環境變數]
+  B -->|被蓋過| C[後台存起來的值]
+  C --> D[實際生效的值]
+"
+/>
+
+## 幾個會想先改的
+
+<TypeTable
+  type={{
+    "server.host": {
+      type: "IP",
+      default: "127.0.0.1",
+      description: "只能走環境變數。映像檔裡已經是 0.0.0.0",
+    },
+    "server.port": { type: "number", default: "12923", description: "只能走環境變數" },
+    "server.data_dir": {
+      type: "path",
+      default: "data",
+      description: "只能走環境變數。secret.key 和第一個 backend 的資料夾放這裡。映像檔裡是 /data",
+    },
+    "server.public_url": {
+      type: "URL",
+      default: "(從每個請求推)",
+      description: "外面連進來用的網址。第三方登入沒有它就不肯動,連結預覽變空白也要設它",
+    },
+    "auth.registration": {
+      type: "open | invite | closed",
+      default: "open",
+      description: "invite 要有管理員發的碼",
+    },
+    "auth.default_role": {
+      type: "string",
+      default: "member",
+      description: "新帳號進哪個角色。必須存在,否則伺服器不會啟動",
+    },
+    "auth.session_ttl_hours": { type: "number", default: "720", description: "30 天" },
+    "features.anonymous_upload": {
+      type: "boolean",
+      default: "true",
+      description: "開在公網記得一起設 storage.max_total_bytes",
+    },
+    "features.encryption": {
+      type: "boolean",
+      default: "false",
+      description: "收端對端加密的分享",
+    },
+    "features.docs": {
+      type: "boolean",
+      default: "false",
+      description: "只能走環境變數。一頁可以瀏覽的 API 參考,畫面是瀏覽器去 CDN 拿的",
+    },
+    "share.code_length": { type: "number", default: "8" },
+  }}
+/>
+
+<Callout type="error" title="匿名上傳沒有配額">
+`features.anonymous_upload` 開著而 `storage.max_total_bytes` 沒設的話,任何連得到的人都能把磁碟塞滿。啟動時會警告。
+</Callout>
+
+`server.request_timeout_secs` 不管上傳。一個時鐘預算沒辦法同時讓 5 GB 的上傳傳完、又擋掉連上來就不送東西的客戶端,所以上傳改看 `server.upload_stall_secs`:可以多久沒有任何位元組進來。

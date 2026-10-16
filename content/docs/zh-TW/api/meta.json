@@ -1,0 +1,7 @@
+{
+  "title": "API",
+  "description": "REST API 參考",
+  "icon": "Webhook",
+  "root": true,
+  "pages": ["index", "...(generated)"]
+}

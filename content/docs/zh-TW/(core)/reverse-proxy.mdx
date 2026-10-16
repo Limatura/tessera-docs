@@ -1,0 +1,83 @@
+---
+title: 反向代理
+description: 放在 nginx / Caddy / Cloudflare 後面要設什麼
+icon: Network
+---
+
+放在反向代理後面的話,tessera 看到的來源位址是代理的,不是使用者的。
+
+<Callout type="error" title="不設的話節流會失效">
+  登入失敗、取件碼枚舉、分享密碼嘗試、寄信次數,這些節流全部按來源位址計數。所有人都記成代理那一個位址的話,一個人猜十次密碼就會把整台機器的人一起擋掉。
+</Callout>
+
+把 `server.trusted_proxies` 設成代理的位址,在後台或用環境變數:
+
+```bash
+TESSERA_SERVER__TRUSTED_PROXIES='127.0.0.1, ::1'
+```
+
+只有從清單裡的位址連進來的連線,它送的 `X-Forwarded-For` 才會被採信。清單空的(預設)就是誰都不信。
+
+<Callout type="warn" title="填代理自己的位址,不是使用者的">
+  同一台機器上的代理是 `127.0.0.1`,docker compose 裡的是那個網段,例如
+  `172.18.0.0/16`。CIDR 和單一位址都收。
+</Callout>
+
+<Mermaid
+  chart="
+flowchart LR
+  V[使用者] -->|請求| P[反向代理]
+  P -->|加上 X-Forwarded-For| T[tessera]
+  T --> L[節流按使用者的位址計數]
+"
+/>
+
+## 它怎麼決定誰是使用者
+
+`X-Forwarded-For` 是一串位址,nginx 這類代理是把自己看到的**接在後面**。所以真正的使用者在右邊,左邊那些是上一手寫進去的,包括使用者自己寫的。
+
+從連線對端開始往左走,遇到第一個不在清單裡的就是使用者,左邊的全部丟掉:
+
+<Mermaid
+  chart="
+flowchart RL
+  A[10.0.0.9<br/>連線對端] --> B{在 trusted_proxies?}
+  B -->|是,是我的代理| C[203.0.113.9]
+  C --> D{在 trusted_proxies?}
+  D -->|不在| E[就是它<br/>左邊的丟掉]
+"
+/>
+
+所以使用者自己送一個 `X-Forwarded-For: 1.2.3.4` 進來也沒用,它會被代理接在後面,然後在這一步被丟掉。
+
+<Callout type="error" title="不要寫 0.0.0.0/0">
+那等於誰都信,而且比不設更糟:鏈上每一跳都算自己人,走到最左邊,也就是使用者自己寫的那個。每次換一個位址,節流就永遠累積不起來。啟動時會警告。
+
+沒有反向代理就不要設這一項。
+
+</Callout>
+
+## 舊的 trusted_proxy
+
+`trusted_proxy: true` 還能用,但啟動時會警告。它的意思是「相信任何連進來的東西」,使用者能直接連到那個 port 的話等於沒有節流。
+
+改成 `trusted_proxies` 並寫出代理的位址。
+
+## server.host 設成 :: 的話
+
+綁在 `::` 的 socket 收到 IPv4 連線時,對端位址長得像 `::ffff:127.0.0.1`。比對之前會先正規化回 `127.0.0.1`,清單照常寫 `127.0.0.1`。
+
+## HTTPS
+
+`auth.cookie_secure` 預設 `auto`:代理受信任、而且送了 `X-Forwarded-Proto: https`,session cookie 才會標 `Secure`。
+
+`trusted_proxies` 沒設對的話,即使外面是 HTTPS,cookie 也不會標 `Secure`。
+
+<Callout type="warn" title="cookie_secure 設成 always 而實際上是 HTTP">
+  瀏覽器會收下回應然後丟掉
+  cookie。症狀是登入看起來成功了,但什麼都沒發生,而且沒有任何錯誤訊息。
+</Callout>
+
+## 大家看到的網址
+
+把 `server.public_url` 設成大家打的那個網址,例如 `https://files.example.com`。沒設的話機器會從每個請求推出網址,而在會改寫 `Host` 的代理後面這會出錯:連結預覽變空白,[用別的帳號登入](/zh-TW/docs/sign-in)則是根本不肯開始。

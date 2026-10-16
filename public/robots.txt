@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://4000--main--tessera--only.coder.sao-x.com/sitemap.xml

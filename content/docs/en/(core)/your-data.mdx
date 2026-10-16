@@ -1,0 +1,178 @@
+---
+title: Where your data lives
+description: What this instance holds about a person, and what deleting an account actually removes
+icon: Database
+---
+
+Deleting an account does not erase everything that account touched. Here is what is held, where, and when each part goes.
+
+<Callout type="warn" title="Deletion is not erasure">
+An account is scrubbed, not dropped. The record stays, with its internal identifier, because shares still point at it and "nobody uploaded this" is a different fact from "the uploader is gone".
+</Callout>
+
+## The account itself
+
+The record is not dropped. It is rewritten in place:
+
+| | After deletion |
+|---|---|
+| Your username | Replaced with a placeholder nobody can register |
+| Your email address | Replaced the same way |
+| Whether the address was confirmed | Forgotten |
+| The account itself | Marked deleted, with the time and who did it. Nothing can sign in to it |
+| Its internal identifier | Kept, because shares still point at it |
+| Your password | Removed |
+| Accounts linked at other sites | Removed |
+| Your appearance choices | Removed |
+
+<Callout type="warn" title="Accounts deleted by an earlier version">
+Before this was fixed, deleting an account left the password hash, linked sign-ins and preferences behind. Accounts removed back then still have them; they are not cleaned up after the fact.
+</Callout>
+
+The name and the address are both released, so somebody else can register them.
+
+<Callout title="The tombstone values cannot be claimed">
+`gone-` as a name prefix and the `deleted.invalid` domain are refused by the ordinary parsers, so nobody can register a name or address that impersonates a removed account.
+</Callout>
+
+## The login history
+
+The most identifying thing this instance holds about a person is where they signed in from. Each sign-in records the address, the browser, when it was last seen, and why it ended.
+
+**Every session of a deleted account is removed immediately**, by both the self-service route and the administrative one.
+
+Sessions that simply end are kept, because the table doubles as the login history a person reads to answer "has anybody else been in here". The sweep drops them once they are older than `auth.login_history_days`, 90 by default.
+
+You can see your own sign-ins, each with the address it came from, the browser, when it was last seen and why it ended. You can end one, or end every session but the one you are using.
+
+<Callout title="Ending a session is not forgetting it">
+The row stays for the rest of the history window, or the list cannot answer "was anybody else in here".
+</Callout>
+
+## Who opened a share
+
+Off by default. With `share.access_log.enabled` on, every handover of content writes a row: the time, the address, and the user agent string.
+
+| | |
+|---|---|
+| Who can read it | An administrator. Not the uploader |
+| How long | `share.access_log.retention_days`, 30 by default. Zero is refused rather than read as forever |
+| What does not count | `HEAD`, so link checkers, prefetches and chat unfurlers leave nothing |
+
+The address is `null` when there is no honest answer for it, which is what happens behind a proxy that is not trusted. User agent strings are cut at 512 bytes.
+
+<Callout title="Turning it off does not keep the old rows">
+The sweep runs on retention whatever the switch says.
+</Callout>
+
+`GET /api/v1/capabilities` reports `access_log`, so a share page can tell a visitor before they open anything.
+
+### The counters are a different thing
+
+Views and copies are counted by the client, because nothing reaches the server when somebody reads a note on screen or presses copy. Anyone can inflate them, so nothing depends on them, and the count says nothing about who did it.
+
+Collections are not counted this way. The server counts those itself, where a client cannot skip them.
+
+## Credentials
+
+None of them keeps the value that was handed out, only a fingerprint to check it against.
+
+| | When it goes |
+|---|---|
+| API tokens | Deleted with the account |
+| Recovery codes | Deleted with the account |
+| Password reset links | Deleted with the account, or once they expire |
+| Address verification links | Deleted with the account, or once they expire |
+| Invite codes | Once they expire |
+
+An invite records how many times it was used and nothing about who used it, so a code cannot link one account to another.
+
+Two sign-in credentials are kept differently. The authenticator app’s secret is sealed with the instance’s key, because every code is computed from it. A passkey is stored as its public key; the private half never leaves the device. Both are deleted with the account.
+
+## What was uploaded
+
+This is the part that survives.
+
+<Mermaid chart="
+flowchart LR
+  A[account deleted] --> B[account record scrubbed]
+  A --> C[sessions removed]
+  A --> D[API tokens removed]
+  A --> E[shares kept<br/>uploader now a tombstone]
+" />
+
+None of it is touched when the account goes.
+
+Two ways to end them:
+
+- Deleting your own account expires every live share first, unless you choose to keep the links working. The content is reaped on the next sweep and the record goes after `share.retain_after_death_hours`.
+- An administrator can end every share belonging to one account as a separate action. Deleting the account on its own leaves them running.
+
+A stored file is filed under a year, a month and a random identifier, so no name or address appears in the path.
+
+## Accounts at other sites
+
+Signing in through GitHub, Discord or an identity provider stores which provider it was and the provider's identifier for you. That identifier is a number or an opaque string, not your name, chosen because names can change and be taken over. Detaching the provider removes it.
+
+## Encrypted shares
+
+An [end-to-end encrypted](/en/docs/encryption) share is stored as bytes the instance has no key for: the content, file names, types and title are unreadable here. What the instance still knows is how large each file is, how many there are, when the share was made and expires, and how often it was fetched.
+
+## Registrations that never completed
+
+With mail configured, the name, address and password somebody typed are held before any account exists. That is deliberate: with no account written yet, "has this address registered here" cannot be asked.
+
+Rows are swept once they expire.
+
+## Outside the database
+
+- **Throttle counters** live in memory, keyed by source address. A restart clears them. Nothing about them reaches disk.
+- **The request log** records the method, the path and a request id. No address, no account. Retrieval codes appear in it, because they are in the path. A server error’s response carries the same request id, so a report can be matched to its log line.
+- **The mail relay** sees the recipient address for every confirmation and reset message. What it keeps is its own operator's question, not this instance's.
+- **A storage provider**, when files are kept in a bucket, holds the files. Encrypted shares are sealed before they get there.
+- **A virus scanner**, when [scanning](/en/docs/scanning) is on, receives the content of every file that is not end-to-end encrypted.
+- **Have I Been Pwned**, when password checking is on, receives the first five characters of the SHA-1 of each new password. Nothing that identifies the person.
+- **A sign-in provider** knows when somebody signs in here through it.
+
+<Callout type="error" title="Retrieval codes are in the log">
+`/s/0ZPQ4M7K` reaches the request log as-is, and that code is what collects the share. Send logs somewhere held to the same standard.
+</Callout>
+
+## Erasing for real
+
+There is no erasure feature and no way to export your data. An operator with database access can remove what is left:
+
+<Steps>
+<Step>
+
+### End the shares
+
+End them from the admin panel, or expire them when deleting your own account. Their content is only released once they are dead.
+
+</Step>
+<Step>
+
+### Wait for one sweep
+
+It runs hourly and is what releases the stored files. Deleting records first strands those files, because the record is the only thing that says which file to remove.
+
+</Step>
+<Step>
+
+### Then delete the rows
+
+The scrubbed account and the dead shares can go once nothing points at them. Anything already removed from storage will not come back.
+
+</Step>
+</Steps>
+
+<Callout type="warn">
+Backups are not covered by any of this. Last week's dump still holds the old rows in full.
+</Callout>
+
+## Next
+
+<Cards>
+  <Card title="Accounts" href="/en/docs/accounts" description="Registration policy, forgotten passwords" />
+  <Card title="Shares" href="/en/docs/shares" description="Use counts, expiry and how content is reaped" />
+</Cards>

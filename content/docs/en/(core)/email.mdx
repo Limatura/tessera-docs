@@ -1,0 +1,108 @@
+---
+title: Email
+description: Optional. Turning it on changes registration and password resets
+icon: Mail
+---
+
+Not required. A single-person home instance usually skips it, since a forgotten password can be [fixed from the command line](/en/docs/accounts#from-the-command-line).
+
+## Setting it up
+
+In the admin panel, or as environment variables:
+
+| Setting | |
+|---|---|
+| `mail.host` | The relay |
+| `mail.port` | 587 by default |
+| `mail.tls` | How the connection is encrypted, see below |
+| `mail.username`, `mail.password` | Sealed once saved; the panel never shows them again |
+| `mail.from` | The sender address. Must be a domain the relay accepts from you |
+| `mail.public_url` | The start of every link in a message. Use the address a recipient's browser can open |
+
+`host`, `from` and `public_url` all need values before mail counts as set up. A half-filled set is refused rather than run, because it would draw a "forgot password" link that fails at the moment somebody is already locked out.
+
+### Encrypting the connection
+
+`mail.tls` is one of:
+
+- **auto**, the default: port 465 uses TLS from the first byte, every other port uses STARTTLS.
+- **starttls** or **implicit**, to force one.
+- **none**, for a relay on the same machine or network: a local postfix, a relay container, Mailpit. It refuses to send unless the relay's address turns out to be private, loopback or link-local.
+
+<Callout type="warn" title="auto changed">
+Earlier versions used STARTTLS only on 587 and TLS from the first byte everywhere else. A relay that expects TLS from the start on some port other than 465 now needs `implicit` set explicitly. Getting it wrong shows up as a handshake error that looks like a certificate problem.
+</Callout>
+
+| Setting | Default | Ceiling |
+|---|---|---|
+| `reset_ttl_minutes` | 30 | 24 hours |
+| `registration_ttl_hours` | 24 | 7 days |
+
+## Registration becomes two steps
+
+Unconfigured, registering creates the account immediately and signs the person in.
+
+<Mermaid
+  chart="
+flowchart LR
+  A[somebody registers] --> B{mail configured?}
+  B -->|no| C[account created now<br/>signed in]
+  B -->|yes| D[nothing created yet<br/>waiting on the link]
+"
+/>
+
+Configured, nothing is created yet. The details are held, and the account exists only once the link in the mail is followed.
+
+<Mermaid
+  chart="
+sequenceDiagram
+  participant Visitor
+  participant tessera
+  participant Inbox
+  Visitor->>tessera: registers
+  tessera-->>Visitor: check your mail
+  tessera->>Inbox: confirmation link
+  Visitor->>tessera: follows the link
+  tessera-->>Visitor: account created, signed in
+"
+/>
+
+The reason is that anyone can type somebody else's address. Creating the account immediately would let a stranger claim that address, claim a username, and spend the instance's storage from behind an inbox they cannot read.
+
+<Callout type="warn" title="The frontend has to read /capabilities">
+  Use `registration_requires_confirmation` to decide between "check your mail"
+  and "welcome", rather than guessing from the status code. Guessing wrong
+  welcomes somebody who still has to open their inbox.
+</Callout>
+
+Responses to expect:
+
+- **The username is taken.** A username is a handle somebody picked, so they are told plainly.
+- **The address already has an account.** The visitor is told to check their mail, exactly as if it had worked, and a message goes to that address saying somebody tried. Saying "that address is taken" would turn the registration form into a place to ask whether a given person is on this instance.
+- **Too many mails to one address.** Three an hour, counted separately for registrations and resets.
+
+<Accordions>
+<Accordion title="What if the username is gone by the time the link is opened">
+
+Registering again is the only way forward.
+
+Usernames are **not** reserved while waiting. Reserving them would make "register and never confirm" a free way to lock away every good name, with nothing an operator could do about it. The cost is that somebody occasionally fills the form in twice.
+
+</Accordion>
+</Accordions>
+
+## Password resets
+
+Asking for a reset says the same thing whether or not the address has an account, for the reason above. With mail unconfigured there is no reset link at all, and the instance says so, so a frontend can leave the option out rather than offering something that cannot work.
+
+<Accordions>
+<Accordion title="Building without mail support at all">
+
+Mail is compiled in by default, and leaving it out saves 37 KB. It is a separate question from the settings above: this decides whether the program can send mail, those decide whether this instance does.
+
+```bash
+cargo build --no-default-features --features sqlite,storage-fs
+```
+
+</Accordion>
+</Accordions>

@@ -1,0 +1,173 @@
+---
+title: Accounts
+description: Registration policy, forgotten passwords
+icon: Users
+---
+
+## Registration policy
+
+`auth.registration` is `open`, `invite` or `closed`, set in the admin panel.
+
+`invite` needs a code an administrator issued. It goes in the registration body as `invite_code`.
+
+Without mail configured, registering creates the account and signs it in on the spot. With mail configured, the account does not exist until the address is confirmed. See [email](/en/docs/email).
+
+The first account to exist becomes the administrator, which is the one created automatically on first start.
+
+## Roles
+
+Permissions come from a role. An account has exactly one, and four are built in:
+
+| Role | What it can do |
+|---|---|
+| `owner` | Everything |
+| `admin` | Accounts, invites, and looking at what is here. Not deleting accounts, not deleting other people's shares, not editing roles |
+| `member` | Upload, and manage what you uploaded |
+| `guest` | Signed in, and allowed nothing |
+
+New accounts go into `auth.default_role`, which is `member` unless you change it. The role has to exist or the server refuses to start, so a typo is caught at boot rather than arriving as a stranger's `500` at registration.
+
+<Callout title="Give people a different role rather than editing member">
+The built-in roles are locked. To give ordinary users less, point `auth.default_role` at a role you made.
+</Callout>
+
+The last account holding `roles:write` cannot be deleted or demoted.
+
+## Account states
+
+| State | What it means |
+|---|---|
+| `active` | Normal |
+| `disabled` | Suspended. The person is stopped, their content is not |
+| `deleted` | Gone, and the row scrubbed. See [where your data lives](/en/docs/your-data) |
+
+Disabling stops somebody signing in. Their shares keep serving, because whoever holds one of those links did nothing wrong. To stop the content too, an administrator disables the shares themselves.
+
+<Mermaid
+  chart="
+stateDiagram-v2
+  [*] --> active
+  active --> disabled: suspend
+  disabled --> active: restore
+  active --> deleted: delete
+"
+/>
+
+## Changing your own account
+
+You can change your own name or address, and remove your own account. Both ask for your current password first.
+
+<Callout type="warn" title="An API token cannot do either">
+Neither is possible with an API token, only while signed in.
+</Callout>
+
+Removing your account ends everything you uploaded as well, unless you choose to keep the links you handed out working.
+
+Changing your address clears its verification. With [mail](/en/docs/email) set up you can ask for a new verification message; the link in it confirms only the address it was sent to, so changing the address again in the meantime makes it worthless.
+
+## Passwords
+
+Eight characters minimum by default (`auth.password.min_length`). The instance can also require mixed case, a digit or a symbol; all three are off by default. The rules apply when a password is set, not when it is used, so tightening them never locks out an existing account.
+
+### Checking against known leaks
+
+With `auth.pwned.enabled` on, every new password is checked against Have I Been Pwned and refused if it appears in a known breach.
+
+<Callout title="What leaves the instance">
+The first five characters of the password's SHA-1 hash, nothing else. The comparison happens here. If the service cannot be reached within three seconds the password is allowed and a line is logged. `auth.pwned.url` can point at a mirror you run instead.
+</Callout>
+
+Sign-in through GitHub, Discord or your own identity provider is on its own page: [signing in with another account](/en/docs/sign-in).
+
+## Two-step verification
+
+Anyone who signs in with a password can add an authenticator app from their account page. Signing in with the password then asks for a six-digit code from the app as well, within five minutes of the password.
+
+- It takes effect only after one code from the app has been entered, so a botched setup locks nobody out.
+- Ten recovery codes are shown once. Each works once in place of a code. Asking for new ones makes the old ones stop working.
+- Turning it off, or asking for new recovery codes, needs the password or a code. An API token can do neither.
+- Only the password asks. Signing in through GitHub, Discord or your own identity provider does not, because that provider has its own second step.
+
+<Callout type="warn" title="Wrong codes are counted per account">
+After too many, the account is refused for a while, from every address. Whoever is guessing already has the password, so change it.
+</Callout>
+
+Somebody who has lost both the app and the recovery codes can be reset by an administrator from the admin panel, whose user list shows who has it on. For the only administrator, on the machine:
+
+```bash
+tessera-server reset-mfa -u admin
+```
+
+It works with the service stopped. The account signs in with its password alone afterwards.
+
+## Passkeys
+
+A passkey signs you in with a fingerprint, a face or the device's PIN instead of the password. Add them from your account page. An account can have several, each with a name you can change. A passkey sign-in counts as both steps, so it never asks for a code.
+
+<Callout type="warn" title="A passkey belongs to one address">
+It is tied to the host name in `server.public_url`, or to the address in the browser when that is unset. Move the instance to another domain and every passkey stops working: people sign in another way and add a new one. Set `server.public_url` before anyone adds a passkey.
+</Callout>
+
+An account cannot remove its last way to sign in, and a passkey counts as one.
+
+## Forgotten passwords
+
+### From the command line
+
+Needs no network, and works with the service stopped. This is what to use when the only administrator is locked out.
+
+<Tabs items={["Directly", "Docker"]}>
+<Tab value="Directly">
+
+```bash
+tessera-server reset-password -u admin
+```
+
+</Tab>
+<Tab value="Docker">
+
+```bash
+docker exec -it <container> tessera-server reset-password -u admin
+```
+
+<Callout type="warn" title="-it is not optional">
+  Without a terminal it will not ask. It generates one and prints it instead.
+</Callout>
+
+</Tab>
+</Tabs>
+
+It prompts for the new password without echoing, twice. Getting the two wrong changes nothing.
+
+Other ways in:
+
+- **`--password-stdin`** reads from a pipe. Use this for automation.
+- **`--generate`** prints a generated one and marks the account as owing a change.
+- **`-p <value>`** passes it directly.
+
+<Callout type="error" title="-p leaks">
+  While the command runs, `ps` shows the password to every user on the machine,
+  and it stays in shell history. Use `--password-stdin` in automation.
+</Callout>
+
+With no terminal and no flag (a script, a cron job) it generates one and prints it. So piping a password in without `--password-stdin` sets the generated one instead:
+
+```
+Password for `admin` set to:
+
+    0cae83d5ad2ca901d5163bf712eef39fb355d0fe1a9ebd2ff094c7b0b053816a
+
+Sign in with it and choose a new one — this account is now marked as owing a change.
+
+There was no terminal to ask at, so this one was chosen here.
+If you meant to supply one, pass it with --password-stdin.
+```
+
+<Callout>
+  Anyone who can run this against the database can take any account. Anyone
+  holding the database file could already do the same thing.
+</Callout>
+
+### By email
+
+Requires [mail to be configured](/en/docs/email). The frontend also needs a `/reset-password` route for the link to go anywhere.

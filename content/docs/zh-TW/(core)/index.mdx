@@ -1,0 +1,203 @@
+---
+title: 開始
+description: 跑起來,然後登入
+icon: Rocket
+---
+
+tessera 是一個自架的檔案傳遞工具。上傳一個檔案,拿到一組取件碼,把碼給對方。
+
+<Shots>
+  <Shot name="home" alt="上傳頁">
+    上傳頁:拖放檔案、貼上文字或加一條連結
+  </Shot>
+  <Shot name="result" alt="上傳完成後的頁面">
+    上傳後:連結、QR code、期限
+  </Shot>
+</Shots>
+
+## 跑起來
+
+<Steps>
+<Step>
+
+### 拉映像檔
+
+```bash
+docker pull ghcr.io/limatura/tessera:latest
+```
+
+`:latest` 是最新的 release,`:sha-<commit>` 釘住某一次建置。amd64 和 arm64 都有出,所以 Pi 和 NAS 跑得起來。
+
+要自己建的話,`docker build -f apps/server/Dockerfile -t tessera .` 會連前端一起編進去。
+
+</Step>
+<Step>
+
+### 跑起來
+
+<Tabs items={["docker run", "Docker Compose", "Compose 5.3+"]}>
+<Tab value="docker run">
+
+```bash
+docker run -p 12923:12923 -v tessera-data:/data ghcr.io/limatura/tessera:latest
+```
+
+資料放在名為 `tessera-data` 的 named volume。Docker 第一次執行時會自動建立,伺服器也已經有寫入權限。想把資料放在自己指定的目錄,請用 Docker Compose 頁籤。
+
+</Tab>
+<Tab value="Docker Compose">
+
+存成 `compose.yaml`:
+
+```yaml
+services:
+  init-data:
+    image: busybox:1.37
+    command: chown -R 65532:65532 /data
+    volumes:
+      - ./data:/data
+
+  tessera:
+    image: ghcr.io/limatura/tessera:latest
+    depends_on:
+      init-data:
+        condition: service_completed_successfully
+    ports:
+      - "12923:12923"
+    volumes:
+      - ./data:/data
+    init: true
+    restart: unless-stopped
+```
+
+然後在背景啟動:
+
+```bash
+docker compose up -d
+```
+
+之後要更新,跑 `docker compose pull && docker compose up -d`。
+
+volume 是 compose 檔旁邊的 `./data`。Tessera 以非 root 使用者(uid 65532)執行,所以一次性的 `init-data` 服務會先以 root 把目錄交給它,然後結束;Tessera 會等它完成。每次 `up` 都會再跑一次,只有這個用完即丟的容器是 root。
+
+如果 `./data` 在帶有 `root_squash` 的 NFS 上,`chown` 會失敗。改用 named volume(`tessera-data:/data`,並在最上層加 `volumes: {tessera-data: {}}`),或在 `tessera` 上設 `user: "<uid>:<gid>"` 對齊目錄的擁有者。
+
+</Tab>
+<Tab value="Compose 5.3+">
+
+Docker Compose 5.3 以上可以用 `pre_start` 在單一服務裡做同一件事。用 `docker compose version` 檢查;較舊的版本會用 `additional properties 'pre_start' not allowed` 拒絕這個檔案。
+
+```yaml
+services:
+  tessera:
+    image: ghcr.io/limatura/tessera:latest
+    ports:
+      - "12923:12923"
+    volumes:
+      - ./data:/data
+    init: true
+    restart: unless-stopped
+    pre_start:
+      - image: busybox
+        user: root
+        command: chown -R 65532:65532 /data
+```
+
+定義沒變的話,之後的 `up` 會跳過 `pre_start` 這一步。
+
+</Tab>
+</Tabs>
+
+</Step>
+<Step>
+
+### 從 log 拿管理員密碼
+
+映像檔的 log 是 JSON,一行一個物件。用這個找出來:
+
+```bash
+docker logs <container> 2>&1 | grep password
+```
+
+用 Compose 的話,改跑 `docker compose logs tessera 2>&1 | grep password`。
+
+那一行長這樣:
+
+```json
+{
+  "timestamp": "…",
+  "level": "WARN",
+  "message": "created the first administrator with a generated password; sign in and change it",
+  "username": "admin",
+  "password": "1e3bc629…",
+  "target": "tessera_server::auth::bootstrap"
+}
+```
+
+<Callout type="warn" title="這行只印一次">
+  之後重啟不會再印。錯過的話用 [`reset-password`](/zh-TW/docs/accounts#指令)
+  再設一次。
+</Callout>
+
+</Step>
+<Step>
+
+### 登入,然後換掉密碼
+
+系統會擋著你,直到換掉為止。
+
+</Step>
+</Steps>
+
+## /data 裡有什麼
+
+<Files>
+  <Folder name="data" defaultOpen>
+    <File name="tessera.db" />
+    <File name="secret.key" />
+    <Folder name="blobs">
+      <File name="01K1ZQK9V8…" />
+    </Folder>
+  </Folder>
+</Files>
+
+`blobs` 是上傳的檔案本體,直到你加了別的地方放檔案為止。`secret.key` 用來加密存在資料庫裡的憑證:儲存 backend 的位址、寄信密碼、第三方登入的 secret。
+
+<Callout type="error" title="secret.key 要跟資料庫一起備份">
+  沒有它還原回來的資料庫照樣開得起來,但裡面每一個封起來的憑證都讀不出來,要全部重新輸入。見[設定](/zh-TW/docs/configuration#封住憑證的那把金鑰)。
+</Callout>
+
+設定不在磁碟區裡。它們來自環境變數,以及同一個網址的 `/admin/` 後台。
+
+<Callout type="warn">沒有把 `/data` 掛出來的話,容器一重建東西就沒了。</Callout>
+
+## 接下來
+
+<Cards>
+  <Card
+    title="分享"
+    href="/zh-TW/docs/shares"
+    description="上傳、取件碼、次數與期限"
+  />
+  <Card
+    title="設定"
+    href="/zh-TW/docs/configuration"
+    description="設定從哪裡來,誰蓋過誰"
+  />
+  <Card
+    title="反向代理"
+    href="/zh-TW/docs/reverse-proxy"
+    description="放在 nginx / Caddy / Cloudflare 後面就要看這頁"
+  />
+  <Card
+    title="帳號"
+    href="/zh-TW/docs/accounts"
+    description="註冊政策、忘記密碼"
+  />
+  <Card
+    title="寄信"
+    href="/zh-TW/docs/email"
+    description="選配。開了之後註冊流程會不一樣"
+  />
+  <Card title="API" href="/zh-TW/docs/api" description="端點參考,從契約產生" />
+</Cards>
