@@ -1,0 +1,113 @@
+---
+title: 接進 agent
+description: 讓 AI agent 或腳本上傳檔案,再交回一條連結
+icon: Bot
+---
+
+agent 做出一個檔案之後,常常得交給某個人:一份報告、一個 build、一份匯出。Tessera 讓它用一個請求就能上傳,回來的就是連結。這頁說明要告訴 agent 什麼,以及它會拿到什麼。
+
+## agent 需要的東西
+
+- **機器的位址**,例如 `https://files.example.com`。
+- **一個權杖**:這台機器不開放匿名上傳,或你想讓分享算在自己帳號下時才需要。在帳號頁產生,只給它建立分享的權限。agent 不需要更多,權杖外洩時也刪不了任何東西。
+- **`curl`**;要送整個資料夾、要加密,或大檔案得撐過斷線時,改用 [`tess`](/zh-TW/docs/cli)。
+
+權杖放在環境變數裡,不要寫進 prompt。prompt 裡的東西可能會留在 log 或對話紀錄裡。
+
+## 用 curl 上傳
+
+```bash
+curl --fail-with-body -T report.pdf https://files.example.com/
+echo "build 1423 通過" | curl --fail-with-body -T - https://files.example.com/
+```
+
+網址結尾一定要有 `/`。curl 會把檔名接上去,那就是分享裡的檔名。`-T -` 讀標準輸入,做出來的是筆記而不是檔案。
+
+回應就是一行連結,可以直接 `link=$(curl …)`。分享的取件碼也在 `X-Share-Code` 標頭裡。帶 `Accept: application/json` 的話,回應改成分享的 JSON,和 `POST /api/v1/shares` 回的一樣。
+
+選項放在標頭裡:
+
+| 標頭 | 範例 | 作用 |
+| --- | --- | --- |
+| `X-Share-Expires` | `30m`、`12h`、`1d`、`2w` | 分享能活多久 |
+| `X-Share-Max-Downloads` | `1` | 能取件幾次。`1` 就是閱後即焚 |
+| `X-Share-Password` | | 收件人需要的密碼 |
+| `Authorization` | `Bearer tsk_…` | 以權杖的帳號上傳 |
+
+```bash
+curl --fail-with-body -T report.pdf \
+  -H "Authorization: Bearer $TESSERA_TOKEN" \
+  -H "X-Share-Expires: 1d" \
+  -H "X-Share-Max-Downloads: 3" \
+  https://files.example.com/
+```
+
+限制和其他上傳一樣:檔案大小、儲存空間、配額,還有權杖的權限。每次 `curl -T` 做出一份只有一個檔案的分享。要多個檔案放同一份、送資料夾,或端對端加密,請用 `tess`。
+
+<Callout type="warn" title="匿名上傳只能用管理權杖刪掉">
+  沒帶權杖時,回應還會附上 `X-Share-Management-Token`。那是分享過期前刪掉它的唯一方法,而且不會再出現。用 `curl -D -` 看標頭,或帶 `Accept: application/json`,它就是 `management_token` 欄位。
+</Callout>
+
+### 失敗的時候
+
+回應是一行 `error: <訊息>`,加上 HTTP 狀態碼。`--fail-with-body` 會讓 curl 以錯誤結束,同時還是把那一行印出來。單用 `-f` 會把它藏起來;兩個都不加的話,curl 以 0 結束,agent 可能把錯誤訊息當成連結交出去。
+
+| 狀態碼 | 意思 | 怎麼辦 |
+| --- | --- | --- |
+| `401` | 這台機器要帳號才能上傳,或權杖無效 | 帶上權杖 |
+| `403` | 權杖的帳號不能上傳 | 換一個帳號 |
+| `413` | 檔案比這台機器允許的大 | 不要重試 |
+| `507` | 機器或帳號的配額沒有空間了 | 不要重試 |
+| `429` | 請求太多 | 等 `Retry-After` 的秒數 |
+| `400` | 標頭的值不對,例如 `X-Share-Expires: 3y` | 修正請求 |
+
+## 用 tess
+
+`tess` 的標準輸出只有連結。進度和顏色只在終端機上出現,所以 agent 讀到的就只有連結。失敗時以非零結束,標準錯誤上會有 `error: <訊息>`。
+
+```bash
+export TESSERA_SERVER=https://files.example.com
+export TESSERA_TOKEN=tsk_…
+tess send dist/ --expires 24
+```
+
+agent 用到 `--password`,或要下載有密碼的分享時,一定要設 `TESSERA_PASSWORD`。不然 `tess` 會在終端機上問,而 agent 沒辦法回答。其他用法見[指令列](/zh-TW/docs/cli)。
+
+## 讀取分享
+
+像 `https://files.example.com/s/0ZPQ4M7K` 這樣的連結是給人看的頁面。要拿內容:
+
+```bash
+curl -fLOJ https://files.example.com/s/0ZPQ4M7K/download
+curl -fL https://files.example.com/s/0ZPQ4M7K/raw
+```
+
+`/download` 給檔案,分享有多個檔案時給一個 zip。`/raw` 給筆記的文字。有密碼的分享加上 `-H "X-Share-Password: …"`。
+
+每次下載都會用掉一次取件次數。agent 只是為了確認而下載一份一次性的分享,它就被用掉了。`GET /api/v1/shares/<code>` 可以看分享的資訊,不會用掉次數。
+
+伺服器還在[掃毒](/zh-TW/docs/scanning)時會回 `423`,等 `Retry-After` 的秒數再試。`410` 表示分享過期了,或已經取完允許的次數。
+
+取件碼後面帶 `#…` 的連結是端對端加密的。`#` 後面是金鑰,它不會送到伺服器,所以 `curl` 只拿得到封好的位元組。用 `tess get` 加上整條連結才打得開。
+
+## 給 agent 的說明
+
+在 agent 的 system prompt 或 `AGENTS.md` 裡放類似這樣的一段,通常就夠了:
+
+```md
+To give someone a file, upload it to Tessera and send them the link:
+
+    curl --fail-with-body -T <file> \
+      -H "Authorization: Bearer $TESSERA_TOKEN" "$TESSERA_SERVER/"
+
+The response body is the link. Add -H "X-Share-Expires: 1d" or
+-H "X-Share-Max-Downloads: 1" when asked. If the command fails,
+report the error line instead of a link.
+```
+
+## 接下來
+
+<Cards>
+  <Card title="指令列" href="/zh-TW/docs/cli" description="安裝 tess、登入、送出和下載" />
+  <Card title="API" href="/zh-TW/docs/api" description="所有端點,包括可續傳的上傳" />
+</Cards>

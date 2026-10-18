@@ -1,0 +1,113 @@
+---
+title: Agents
+description: Letting an AI agent or a script upload a file and hand back a link
+icon: Bot
+---
+
+An agent that has made a file often needs to give it to a person: a report, a build, an export. Tessera gives it one request that uploads and answers with a link. This page is what to tell the agent, and what it should expect back.
+
+## What the agent needs
+
+- **The address** of the instance, such as `https://files.example.com`.
+- **A token**, if the instance does not take anonymous uploads, or if you want the shares counted against your account. Make one on your account page and let it only create shares. An agent needs nothing more, and a leaked token then cannot delete anything.
+- **`curl`**, or [`tess`](/en/docs/cli) if it has to send a directory, encrypt, or survive a dropped connection on a large file.
+
+The token goes in an environment variable, not in the prompt. Anything in the prompt can end up in a log or a transcript.
+
+## Upload with curl
+
+```bash
+curl --fail-with-body -T report.pdf https://files.example.com/
+echo "build 1423 passed" | curl --fail-with-body -T - https://files.example.com/
+```
+
+The URL must end in `/`. curl then adds the file's name, and that becomes the name in the share. `-T -` reads standard input and makes a note instead of a file.
+
+The answer is the link on one line, ready for `link=$(curl …)`. The share's code is also in the `X-Share-Code` header. With `Accept: application/json` the answer is the share as JSON instead, as `POST /api/v1/shares` returns it.
+
+Options go in headers:
+
+| Header | Example | What it does |
+| --- | --- | --- |
+| `X-Share-Expires` | `30m`, `12h`, `1d`, `2w` | How long the share lasts |
+| `X-Share-Max-Downloads` | `1` | How many times it may be collected. `1` is burn after reading |
+| `X-Share-Password` | | A password the recipient will need |
+| `Authorization` | `Bearer tsk_…` | Uploads as the token's account |
+
+```bash
+curl --fail-with-body -T report.pdf \
+  -H "Authorization: Bearer $TESSERA_TOKEN" \
+  -H "X-Share-Expires: 1d" \
+  -H "X-Share-Max-Downloads: 3" \
+  https://files.example.com/
+```
+
+The same limits apply as to any other upload: file size, storage, quota and the token's permissions. Each `curl -T` makes one share with one file. For several files in one share, a directory, or end-to-end encryption, use `tess`.
+
+<Callout type="warn" title="An anonymous upload can only be deleted with its management token">
+  Without a token, the answer also carries `X-Share-Management-Token`. It is the only way to delete the share before it expires, and it is not shown again. Read it with `curl -D -`, or use `Accept: application/json`, where it is the `management_token` field.
+</Callout>
+
+### When it fails
+
+The answer is one line, `error: <message>`, with the HTTP status. `--fail-with-body` makes curl exit with an error and still print that line. Plain `-f` hides it, and without either curl exits 0 and the agent may hand the error message on as if it were a link.
+
+| Status | Meaning | What to do |
+| --- | --- | --- |
+| `401` | This instance needs an account to upload, or the token is not valid | Send a token |
+| `403` | The token's account may not upload | Use another account |
+| `413` | The file is larger than this instance allows | Do not retry |
+| `507` | The instance, or the account's quota, has no room left | Do not retry |
+| `429` | Too many requests | Wait the seconds in `Retry-After` |
+| `400` | A header value is wrong, such as `X-Share-Expires: 3y` | Fix the request |
+
+## With tess
+
+`tess` prints the link on standard output and nothing else. Progress and colours only appear on a terminal, so an agent reading its output gets the link alone. A failure exits non-zero with `error: <message>` on standard error.
+
+```bash
+export TESSERA_SERVER=https://files.example.com
+export TESSERA_TOKEN=tsk_…
+tess send dist/ --expires 24
+```
+
+Set `TESSERA_PASSWORD` whenever the agent uses `--password` or fetches a share that has one. Otherwise `tess` asks on the terminal and an agent has nothing to answer with. See [command line](/en/docs/cli) for the rest.
+
+## Reading a share
+
+A link like `https://files.example.com/s/0ZPQ4M7K` is a page for people. To get the content:
+
+```bash
+curl -fLOJ https://files.example.com/s/0ZPQ4M7K/download
+curl -fL https://files.example.com/s/0ZPQ4M7K/raw
+```
+
+`/download` gives the file, or a zip when the share has several. `/raw` gives a note's text. Add `-H "X-Share-Password: …"` for a share with a password.
+
+Each download spends one of the share's collections. An agent that downloads a one-time share just to check it has used it up. `GET /api/v1/shares/<code>` describes a share without spending anything.
+
+The server answers `423` while it is still [scanning](/en/docs/scanning) a share; try again after the `Retry-After` seconds. `410` means the share expired or has been collected as many times as it allowed.
+
+A link with `#…` after the code is end-to-end encrypted. The part after `#` is the key, and it never reaches the server, so `curl` gets only sealed bytes. `tess get` with the whole link opens it.
+
+## A note for the agent's instructions
+
+Something like this, in the agent's system prompt or `AGENTS.md`, is usually enough:
+
+```md
+To give someone a file, upload it to Tessera and send them the link:
+
+    curl --fail-with-body -T <file> \
+      -H "Authorization: Bearer $TESSERA_TOKEN" "$TESSERA_SERVER/"
+
+The response body is the link. Add -H "X-Share-Expires: 1d" or
+-H "X-Share-Max-Downloads: 1" when asked. If the command fails,
+report the error line instead of a link.
+```
+
+## Next
+
+<Cards>
+  <Card title="Command line" href="/en/docs/cli" description="Installing tess, signing in, sending and fetching" />
+  <Card title="API" href="/en/docs/api" description="Every endpoint, including resumable uploads" />
+</Cards>

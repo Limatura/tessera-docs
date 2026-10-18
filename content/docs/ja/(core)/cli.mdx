@@ -1,0 +1,127 @@
+---
+title: コマンドライン
+description: tess で、ターミナルから共有を送って受け取る。暗号化もできる
+icon: SquareTerminal
+---
+
+`tess` はコマンドラインのクライアントです。ファイル、フォルダ、メモをアップロードしてリンクを表示し、共有をダウンロードします。自分の共有の一覧と削除もでき、途中で切れたアップロードは続きから再開します。
+
+## インストール
+
+Linux と macOS では次のとおりです。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/install.sh | sh
+```
+
+スクリプトは最新のリリースからマシンに合ったビルドをダウンロードし、リリースの `SHA256SUMS` と照合してから `tess` を `~/.local/bin` に置きます。そのディレクトリが `PATH` に入っていなければ、追加する行を表示します。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/install.sh | sh -s -- --version 0.1.0 --dir /usr/local/bin
+```
+
+`--version` でリリースを、`--dir` で置き場所を選びます。`TESS_VERSION` と `TESS_INSTALL_DIR` でも同じです。更新するときはもう一度実行します。
+
+ビルドは Linux(x86_64 と arm64。静的リンクなので、どのディストリビューションでも動きます)と macOS(Intel と Apple Silicon)にあります。Windows では[リリースページ](https://github.com/Limatura/tessera/releases)から `tess-windows-x86_64.zip` をダウンロードしてください。
+
+自分でビルドする場合は Rust 1.97 以降が必要です。
+
+```bash
+cargo install --locked --git https://github.com/Limatura/tessera tessera-cli
+```
+
+## サインイン
+
+しなくても使えます。アカウントがなくても、インスタンスが匿名アップロードを許していれば `tess send` は匿名でアップロードし、`tess get` はそもそもアカウントを必要としません。サインインするとインスタンスが保存されるので `--server` を省けます。アップロードは自分のアカウントのものになり、`tess ls` と `tess rm` も使えます。
+
+```bash
+tess login https://files.example.com
+```
+
+リンクと短いコードが表示されます。サインイン済みのブラウザでリンクを開き、同じコードが出ていることを確かめてから許可します。別のマシンでもかまいません。SSH 越しでブラウザを開けないときは、`tess` がリンクを QR コードで描くので、スマートフォンで許可できます。リクエストの有効期限は 10 分です。
+
+ほかに二つの方法があります。
+
+- `tess login --password https://files.example.com` は、ユーザー名かメールアドレスとパスワードを尋ねます。[2 段階認証](/ja/docs/accounts#2-段階認証)を使っていれば、認証アプリのコードも尋ねます。パスキーか外部プロバイダーだけでサインインするアカウントにはパスワードがないので、ブラウザを使ってください。
+- `tess login --with-token https://files.example.com` は標準入力から API トークンを読みます。スクリプトや CI 向けです。トークンはアカウントページで発行します。
+
+ブラウザとパスワードの方法では、「tessera CLI on」にマシン名を付けた名前の API トークンが作られます。共有の作成、一覧、削除ができ、アカウント自身ができること以上はできません。そのマシンをサインアウトさせるには、アカウントページでトークンを取り消します。
+
+インスタンスとトークンは `~/.config/tessera/config.toml` に保存され、本人だけが読めます。Windows ではローミングのアプリデータの下です。保存したトークンは、発行したインスタンスにしか送られません。`--server` で別のインスタンスを指すと、トークンは送られません。
+
+## 送る
+
+```bash
+tess send report.pdf
+tess send photos/ notes.txt
+echo "Wi-Fi のパスワードは冷蔵庫に貼ってある" | tess send -
+```
+
+一つのコマンドで指定したものは一つの共有になります。フォルダは中のファイルをすべて、パスを保ったまま送ります。フォルダの中の空ファイルは除かれます。暗号化しない限り、共有は空のファイルを持てないからです。`-` は標準入力からメモを読みます。メモはそれだけで一つの共有なので、ファイルと混ぜられません。
+
+リンクは標準出力に出て、ほかには何も出ないので、`link=$(tess send report.pdf)` がそのまま使えます。進捗とメッセージは標準エラーに出て、進捗はターミナルのときだけ表示されます。
+
+| オプション | 働き |
+| --- | --- |
+| `--expires <HOURS>` | 共有が何時間もつか |
+| `--max-uses <N>` | 何回受け取れるか |
+| `--password` | パスワードを 2 回尋ねる。または `TESSERA_PASSWORD` を読む |
+| `--encrypt` | このマシンで封をする。[エンドツーエンド暗号化](/ja/docs/encryption)を参照 |
+| `--qr` | リンクを QR コードでも描く。スマートフォンで読み取る用 |
+| `--copy` | リンクをクリップボードにも入れる |
+| `--server <URL>` | インスタンス。省くと `tess login` で保存したもの、または `TESSERA_SERVER` |
+| `--token <TOKEN>` | API トークン。省くと保存したもの、または `TESSERA_TOKEN` |
+
+パスワードはコマンドラインの引数からは受け取りません。`ps` やシェルの履歴に残るからです。`--encrypt` なしでは、ふつうの共有パスワードになります。`--encrypt` を付けると鍵がパスワードから作られるので、12 文字以上が必要です。
+
+`--copy` はデスクトップのクリップボードがあればそれを使います。SSH 越しではターミナルにコピーを頼むので、ターミナルが許していれば成功します。
+
+### アップロードが途中で切れたら
+
+同じコマンドをもう一度実行します。送っている間、`tess` は進み具合を `~/.local/state/tessera/uploads/` に記録していて、同じファイルを同じインスタンスに送ると続きから再開します。
+
+ファイルが変わっていたとき、またはサーバーが未完了のアップロードを捨てたとき(`upload_session_ttl_hours` の後、デフォルトは 24 時間)は最初からやり直します。暗号化したアップロードは、同じパスワードでないと再開できません。
+
+<Callout type="warn" title="途中で切れた暗号化アップロードは鍵をディスクに残す">
+  すでに送った部分はその鍵で封をしてあるので、残りにも同じ鍵が要ります。ファイルは本人だけが読め、送り終わると消えます。送るのをやめるなら、自分で消してください。
+</Callout>
+
+## 受け取る
+
+```bash
+tess get https://files.example.com/s/0ZPQ4M7K
+tess get 0ZPQ4M7K -o downloads/
+```
+
+`tess` がインスタンスを知っていれば(`--server` か `tess login` から)、コードだけでも受け取れます。ファイルは現在のディレクトリか、`-o` で指定したディレクトリに書かれ、パスが表示されます。メモは標準出力に出ます。
+
+受け取ると、ファイルがいくつあっても受け取り回数を 1 回使います。共有にパスワードがあれば `tess` が尋ねるか、`TESSERA_PASSWORD` を読みます。暗号化したリンクは `#` の後ろの鍵で開くので、リンクを丸ごと貼ってください。インスタンスがまだスキャン中なら、`tess` は最大 5 分待ちます。
+
+`tess get` はすでにあるファイルを上書きしません。また、ファイル名のうちふつうのパス部分だけを残すので、`../../.bashrc` のような名前は、選んだディレクトリの中の `.bashrc` になります。
+
+## 自分の共有
+
+この二つはサインインが必要です。
+
+```bash
+tess ls
+tess rm 0ZPQ4M7K
+```
+
+`tess ls` は自分の共有を新しい順に、コード、残り時間、残り回数、名前とともに一覧します。`tess rm` はコードかリンクで一つ削除します。
+
+## シェル補完
+
+`tess completions <shell>` は補完スクリプトを出力します。対応しているのは `bash`、`zsh`、`fish`、`elvish`、`powershell` です。
+
+```bash
+tess completions zsh > ~/.zfunc/_tess
+tess completions bash > ~/.local/share/bash-completion/completions/tess
+```
+
+## 次に読む
+
+<Cards>
+  <Card title="エージェントから使う" href="/ja/docs/agents" description="プログラムにアップロードさせて、リンクを返させる" />
+  <Card title="エンドツーエンド暗号化" href="/ja/docs/encryption" description="--encrypt が何を、誰から守るか" />
+</Cards>

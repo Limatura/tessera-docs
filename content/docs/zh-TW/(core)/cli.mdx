@@ -1,0 +1,127 @@
+---
+title: 指令列
+description: tess 在終端機裡送出和下載分享,加不加密都行
+icon: SquareTerminal
+---
+
+`tess` 是指令列的用戶端。它可以上傳檔案、資料夾或一段筆記並印出連結,也可以下載分享。它還能列出和刪掉你自己的分享,上傳被打斷時也能接著傳。
+
+## 安裝
+
+Linux 和 macOS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/install.sh | sh
+```
+
+腳本會從最新的發布版下載適合你機器的版本,用發布版附的 `SHA256SUMS` 核對過,再把 `tess` 放進 `~/.local/bin`。那個目錄不在 `PATH` 裡的話,它會告訴你要加哪一行。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/install.sh | sh -s -- --version 0.1.0 --dir /usr/local/bin
+```
+
+`--version` 指定版本,`--dir` 指定放哪。`TESS_VERSION` 和 `TESS_INSTALL_DIR` 效果一樣。要更新就再跑一次。
+
+有 Linux(x86_64 和 arm64,靜態連結,哪個發行版都能跑)和 macOS(Intel 和 Apple Silicon)的版本。Windows 請到[發布頁](https://github.com/Limatura/tessera/releases)下載 `tess-windows-x86_64.zip`。
+
+要自己編的話,需要 Rust 1.97 以上:
+
+```bash
+cargo install --locked --git https://github.com/Limatura/tessera tessera-cli
+```
+
+## 登入
+
+不登入也可以。沒有帳號時,只要這台機器開放匿名上傳,`tess send` 就會匿名上傳;`tess get` 則從來不需要帳號。登入之後會記住是哪台機器,就不用每次都給 `--server`,上傳也會算在你的帳號下,而且可以用 `tess ls` 和 `tess rm`。
+
+```bash
+tess login https://files.example.com
+```
+
+它會顯示一個連結和一組短碼。在任何已經登入的瀏覽器打開連結,確認頁面上的碼一樣,再按允許。用別台機器也可以;透過 SSH 連線、沒有瀏覽器可開的時候,`tess` 會把連結畫成 QR code,讓你用手機核准。這個請求 10 分鐘內有效。
+
+另外兩種方式:
+
+- `tess login --password https://files.example.com` 會問你的使用者名稱或 email 和密碼,有開[兩步驟驗證](/zh-TW/docs/accounts#兩步驟驗證)的話還會問驗證 App 上的碼。只用通行密鑰或外部帳號登入的帳號沒有密碼,請用瀏覽器。
+- `tess login --with-token https://files.example.com` 從標準輸入讀一個 API 權杖,給腳本和 CI 用。權杖在帳號頁產生。
+
+瀏覽器和密碼這兩種方式會建立一個 API 權杖,名稱是「tessera CLI on」加上機器名稱。它可以建立、列出和刪掉你的分享,而且不會超過你帳號本身能做的事。要讓那台機器登出,就到帳號頁撤銷它。
+
+機器位址和權杖存在 `~/.config/tessera/config.toml`,只有你讀得到。Windows 上是在漫遊的 AppData 底下。存下來的權杖只會送給發它的那台機器:`--server` 指到別台時,不會帶權杖。
+
+## 送出
+
+```bash
+tess send report.pdf
+tess send photos/ notes.txt
+echo "wifi 密碼貼在冰箱上" | tess send -
+```
+
+同一個指令列出的東西會變成同一份分享。資料夾會送出底下所有檔案,保留它們的路徑。資料夾裡的空檔案會被略過,因為分享不能裝空檔案,除非有加密。`-` 從標準輸入讀一段筆記;筆記自己就是一份分享,不能和檔案混在一起送。
+
+連結印在標準輸出上,而且標準輸出只有連結,所以 `link=$(tess send report.pdf)` 可以直接用。進度和訊息走標準錯誤,進度只在終端機上才會出現。
+
+| 選項 | 作用 |
+| --- | --- |
+| `--expires <HOURS>` | 分享能活幾小時 |
+| `--max-uses <N>` | 能取件幾次 |
+| `--password` | 問兩次密碼,或讀 `TESSERA_PASSWORD` |
+| `--encrypt` | 在這台電腦上封好再送。見[端對端加密](/zh-TW/docs/encryption) |
+| `--qr` | 另外把連結畫成 QR code,給手機掃 |
+| `--copy` | 另外把連結放進剪貼簿 |
+| `--server <URL>` | 哪台機器。預設是 `tess login` 存下的那台,或 `TESSERA_SERVER` |
+| `--token <TOKEN>` | API 權杖。預設是存下來的那個,或 `TESSERA_TOKEN` |
+
+密碼從來不從指令參數拿,因為 `ps` 和 shell 的歷史紀錄看得到。沒加 `--encrypt` 時,它是一般的分享密碼。加了 `--encrypt`,金鑰就從密碼算出來,所以至少要 12 個字元。
+
+`--copy` 有桌面剪貼簿時就用它。透過 SSH 時改請你的終端機複製,終端機允許的話就會成功。
+
+### 上傳被打斷時
+
+再跑一次同一個指令。送的過程中,`tess` 會在 `~/.local/state/tessera/uploads/` 記下送到哪裡,同樣的檔案送到同一台機器就會從那裡接著傳。
+
+如果檔案改過了,或伺服器已經丟掉沒傳完的上傳(`upload_session_ttl_hours` 之後,預設 24 小時),就會從頭開始。加密的上傳要用同一個密碼才能接著傳。
+
+<Callout type="warn" title="被打斷的加密上傳會把金鑰留在磁碟上">
+  已經上傳的部分是用那把金鑰封的,剩下的也得用它。那個檔案只有你讀得到,送完就會刪掉。如果你不打算再送了,請自己刪掉它。
+</Callout>
+
+## 下載
+
+```bash
+tess get https://files.example.com/s/0ZPQ4M7K
+tess get 0ZPQ4M7K -o downloads/
+```
+
+`tess` 知道是哪台機器時(從 `--server` 或 `tess login`),只給取件碼也可以。檔案寫到目前的目錄,或 `-o` 指定的目錄,並印出路徑。筆記則印在標準輸出。
+
+下載會用掉一次取件次數,不管裡面有幾個檔案。分享有密碼的話,`tess` 會問你,或讀 `TESSERA_PASSWORD`。加密的連結靠 `#` 後面的金鑰打開,所以要貼整條連結。如果這台機器還在掃毒,`tess` 最多會等五分鐘。
+
+`tess get` 不會覆蓋已經存在的檔案。它也只保留每個檔名裡一般的路徑段,所以像 `../../.bashrc` 這種名字會落在你選的目錄裡,變成 `.bashrc`。
+
+## 你自己的分享
+
+這兩個要先登入。
+
+```bash
+tess ls
+tess rm 0ZPQ4M7K
+```
+
+`tess ls` 由新到舊列出你的分享,包括取件碼、剩多久、剩幾次和名稱。`tess rm` 用取件碼或連結刪掉一份。
+
+## Shell 自動補全
+
+`tess completions <shell>` 會印出補全腳本。支援 `bash`、`zsh`、`fish`、`elvish` 和 `powershell`。
+
+```bash
+tess completions zsh > ~/.zfunc/_tess
+tess completions bash > ~/.local/share/bash-completion/completions/tess
+```
+
+## 接下來
+
+<Cards>
+  <Card title="接進 agent" href="/zh-TW/docs/agents" description="讓程式上傳檔案、交回連結" />
+  <Card title="端對端加密" href="/zh-TW/docs/encryption" description="--encrypt 防的是什麼、防誰" />
+</Cards>

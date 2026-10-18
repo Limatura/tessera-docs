@@ -63,18 +63,15 @@ sequenceDiagram
 
 ## コマンドラインから
 
-`tessera` コマンドで、暗号化の有無に関係なく共有を送ったり取ってきたりできます。リポジトリの `apps/cli` からビルドします。パッケージ化したリリースはまだありません。
+[`tess`](/ja/docs/cli) は暗号化した共有も送って受け取れます。
 
 ```bash
-tessera send --server https://files.example.com --encrypt holiday/*.jpg
-tessera send --server https://files.example.com --encrypt --password report.pdf
-echo "a note" | tessera send --server https://files.example.com -
-tessera get 'https://files.example.com/s/0ZPQ4M7K#…' -o downloads/
+tess send --encrypt holiday/
+tess send --encrypt --password report.pdf
+tess get 'https://files.example.com/s/0ZPQ4M7K#…'
 ```
 
-`--password` はパスワードをその場で尋ねるか、`TESSERA_PASSWORD` から読みます。コマンドラインには書きません。書くと `ps` に見えてしまいます。`--encrypt` なしだと、通常の共有パスワードになります。`--server` と `--token` は `TESSERA_SERVER` と `TESSERA_TOKEN` からも読めます。トークンがなければ匿名でアップロードします。`--expires` は時間、`--max-uses` は回数です。
-
-アップロードは接続が切れても再開します。`get` は名前の中の普通のパス部分だけを残すので、指定したディレクトリの外には書き込みません。既にあるファイルも上書きしません。
+`--encrypt` だけなら、鍵はリンクの `#` の後ろに入ります。`--password` を付けると鍵はパスワードから作られ、パスワードは 12 文字以上が必要です。受け取る人にはリンクとパスワードの両方が要ります。`tess get` はパスワードを尋ねるか、`TESSERA_PASSWORD` を読みます。
 
 ## 次に読む
 

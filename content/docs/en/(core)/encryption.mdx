@@ -63,18 +63,15 @@ The second column is what the instance needs to enforce quotas, expiry and limit
 
 ## From the command line
 
-The `tessera` command sends and fetches shares, encrypted or not. It is built from `apps/cli` in the repository; there is no packaged release yet.
+[`tess`](/en/docs/cli) sends and fetches encrypted shares too.
 
 ```bash
-tessera send --server https://files.example.com --encrypt holiday/*.jpg
-tessera send --server https://files.example.com --encrypt --password report.pdf
-echo "a note" | tessera send --server https://files.example.com -
-tessera get 'https://files.example.com/s/0ZPQ4M7K#…' -o downloads/
+tess send --encrypt holiday/
+tess send --encrypt --password report.pdf
+tess get 'https://files.example.com/s/0ZPQ4M7K#…'
 ```
 
-`--password` asks for the password rather than taking it on the command line, where `ps` would show it, or reads `TESSERA_PASSWORD`. Without `--encrypt` it sets an ordinary share password instead. `--server` and `--token` can come from `TESSERA_SERVER` and `TESSERA_TOKEN`; without a token the upload is anonymous. `--expires` takes hours and `--max-uses` a count.
-
-Uploads resume after a dropped connection. `get` keeps only ordinary path parts of each name, so a file cannot be written outside the directory you asked for, and it does not overwrite files that already exist.
+`--encrypt` alone puts the key in the link, after `#`. With `--password` the key comes from the password instead, which has to be at least 12 characters, and the recipient needs both the link and the password. `tess get` asks for the password, or reads `TESSERA_PASSWORD`.
 
 ## Next
 

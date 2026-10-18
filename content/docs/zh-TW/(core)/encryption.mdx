@@ -63,18 +63,15 @@ sequenceDiagram
 
 ## 用指令列
 
-`tessera` 這個指令可以送和拿分享,加不加密都行。它是從 repo 裡的 `apps/cli` 編出來的,目前還沒有打包好的發布版。
+[`tess`](/zh-TW/docs/cli) 也能送出和下載加密的分享。
 
 ```bash
-tessera send --server https://files.example.com --encrypt holiday/*.jpg
-tessera send --server https://files.example.com --encrypt --password report.pdf
-echo "一段筆記" | tessera send --server https://files.example.com -
-tessera get 'https://files.example.com/s/0ZPQ4M7K#…' -o downloads/
+tess send --encrypt holiday/
+tess send --encrypt --password report.pdf
+tess get 'https://files.example.com/s/0ZPQ4M7K#…'
 ```
 
-`--password` 會問你密碼,而不是在指令上直接給(那樣 `ps` 看得到),也可以讀 `TESSERA_PASSWORD`。沒加 `--encrypt` 的話,它設的是一般的分享密碼。`--server` 和 `--token` 可以從 `TESSERA_SERVER` 和 `TESSERA_TOKEN` 來;沒有 token 就是匿名上傳。`--expires` 吃小時數,`--max-uses` 吃次數。
-
-上傳斷線之後會接著傳。`get` 只保留每個檔名裡一般的路徑段,所以檔案寫不到你指定的目錄以外,而且不會覆蓋已經存在的檔案。
+只加 `--encrypt` 時,金鑰放在連結的 `#` 後面。加上 `--password`,金鑰改從密碼算出來,密碼至少要 12 個字元,收件人要同時有連結和密碼。`tess get` 會問密碼,或讀 `TESSERA_PASSWORD`。
 
 ## 接下來
 

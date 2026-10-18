@@ -1,0 +1,113 @@
+---
+title: エージェントから使う
+description: AI エージェントやスクリプトにファイルをアップロードさせ、リンクを返させる
+icon: Bot
+---
+
+エージェントが作ったファイルは、たいてい誰かに渡す必要があります。レポート、ビルド、エクスポートなどです。Tessera なら一つのリクエストでアップロードでき、返ってくるのはリンクです。このページでは、エージェントに何を伝えればよいか、何が返ってくるかを説明します。
+
+## エージェントに必要なもの
+
+- **インスタンスのアドレス**。たとえば `https://files.example.com`。
+- **トークン**。インスタンスが匿名アップロードを受け付けないとき、または共有を自分のアカウントのものにしたいときに要ります。アカウントページで発行し、共有の作成だけを許可してください。エージェントにはそれで足り、漏れても何も削除できません。
+- **`curl`**。フォルダを送る、暗号化する、大きなファイルで接続が切れても続けたい、という場合は [`tess`](/ja/docs/cli) を使います。
+
+トークンはプロンプトに書かず、環境変数に入れます。プロンプトの中身はログや会話の記録に残ることがあります。
+
+## curl でアップロードする
+
+```bash
+curl --fail-with-body -T report.pdf https://files.example.com/
+echo "build 1423 passed" | curl --fail-with-body -T - https://files.example.com/
+```
+
+URL は `/` で終わらせます。curl がファイル名を付け足し、それが共有の中のファイル名になります。`-T -` は標準入力を読み、ファイルではなくメモを作ります。
+
+応答はリンク 1 行なので、`link=$(curl …)` でそのまま受け取れます。共有のコードは `X-Share-Code` ヘッダーにも入っています。`Accept: application/json` を付けると、応答は共有の JSON になります。`POST /api/v1/shares` が返すものと同じです。
+
+オプションはヘッダーで渡します。
+
+| ヘッダー | 例 | 働き |
+| --- | --- | --- |
+| `X-Share-Expires` | `30m`、`12h`、`1d`、`2w` | 共有がどれだけもつか |
+| `X-Share-Max-Downloads` | `1` | 何回受け取れるか。`1` なら一度読んだら消える |
+| `X-Share-Password` | | 受け取る人が必要とするパスワード |
+| `Authorization` | `Bearer tsk_…` | トークンのアカウントとしてアップロードする |
+
+```bash
+curl --fail-with-body -T report.pdf \
+  -H "Authorization: Bearer $TESSERA_TOKEN" \
+  -H "X-Share-Expires: 1d" \
+  -H "X-Share-Max-Downloads: 3" \
+  https://files.example.com/
+```
+
+制限はほかのアップロードと同じです。ファイルサイズ、ストレージ、クォータ、トークンの権限がかかります。`curl -T` 1 回で、ファイル一つの共有が一つできます。複数のファイルを一つの共有にする、フォルダを送る、エンドツーエンド暗号化する、といった場合は `tess` を使ってください。
+
+<Callout type="warn" title="匿名アップロードは管理トークンでしか削除できない">
+  トークンなしでアップロードすると、応答に `X-Share-Management-Token` も付きます。期限前に共有を削除する唯一の手段で、二度と表示されません。`curl -D -` でヘッダーを見るか、`Accept: application/json` を付けて `management_token` フィールドから読んでください。
+</Callout>
+
+### 失敗したとき
+
+応答は `error: <メッセージ>` の 1 行と、HTTP ステータスです。`--fail-with-body` を付けると、curl はエラーで終了しつつ、その行も表示します。`-f` だけだと行が隠れます。どちらも付けないと curl は 0 で終了し、エージェントがエラーメッセージをリンクとして渡してしまうかもしれません。
+
+| ステータス | 意味 | どうするか |
+| --- | --- | --- |
+| `401` | このインスタンスはアップロードにアカウントが要る、またはトークンが無効 | トークンを送る |
+| `403` | トークンのアカウントにアップロードが許されていない | 別のアカウントを使う |
+| `413` | ファイルがこのインスタンスの上限より大きい | 再試行しない |
+| `507` | インスタンスかアカウントのクォータに空きがない | 再試行しない |
+| `429` | リクエストが多すぎる | `Retry-After` の秒数だけ待つ |
+| `400` | ヘッダーの値が正しくない。たとえば `X-Share-Expires: 3y` | リクエストを直す |
+
+## tess を使う
+
+`tess` は標準出力にリンクだけを出します。進捗と色はターミナルのときだけ出るので、エージェントが読むのはリンクだけです。失敗すると 0 以外で終了し、標準エラーに `error: <メッセージ>` が出ます。
+
+```bash
+export TESSERA_SERVER=https://files.example.com
+export TESSERA_TOKEN=tsk_…
+tess send dist/ --expires 24
+```
+
+エージェントが `--password` を使うときや、パスワード付きの共有を受け取るときは、必ず `TESSERA_PASSWORD` を設定してください。設定しないと `tess` はターミナルで尋ね、エージェントには答えようがありません。ほかの使い方は[コマンドライン](/ja/docs/cli)を見てください。
+
+## 共有を読む
+
+`https://files.example.com/s/0ZPQ4M7K` のようなリンクは人が見るページです。中身を取るには次のようにします。
+
+```bash
+curl -fLOJ https://files.example.com/s/0ZPQ4M7K/download
+curl -fL https://files.example.com/s/0ZPQ4M7K/raw
+```
+
+`/download` はファイルを返し、共有に複数のファイルがあれば zip を返します。`/raw` はメモのテキストを返します。パスワード付きの共有には `-H "X-Share-Password: …"` を付けます。
+
+ダウンロードするたびに受け取り回数を 1 回使います。確認のためだけに 1 回限りの共有をダウンロードすると、それで使い切ってしまいます。`GET /api/v1/shares/<code>` なら、回数を使わずに共有の情報を見られます。
+
+サーバーがまだ共有を[スキャン](/ja/docs/scanning)している間は `423` が返ります。`Retry-After` の秒数だけ待ってから再試行してください。`410` は、期限切れか、許された回数を受け取り終えたことを表します。
+
+コードの後ろに `#…` が付いたリンクはエンドツーエンド暗号化されています。`#` の後ろが鍵で、サーバーには届かないので、`curl` では封をされたバイト列しか取れません。開くにはリンクを丸ごと `tess get` に渡します。
+
+## エージェントへの指示
+
+エージェントのシステムプロンプトか `AGENTS.md` に、次のような一節を入れれば、たいてい足ります。
+
+```md
+To give someone a file, upload it to Tessera and send them the link:
+
+    curl --fail-with-body -T <file> \
+      -H "Authorization: Bearer $TESSERA_TOKEN" "$TESSERA_SERVER/"
+
+The response body is the link. Add -H "X-Share-Expires: 1d" or
+-H "X-Share-Max-Downloads: 1" when asked. If the command fails,
+report the error line instead of a link.
+```
+
+## 次に読む
+
+<Cards>
+  <Card title="コマンドライン" href="/ja/docs/cli" description="tess のインストール、サインイン、送信と受け取り" />
+  <Card title="API" href="/ja/docs/api" description="再開できるアップロードを含む、すべてのエンドポイント" />
+</Cards>

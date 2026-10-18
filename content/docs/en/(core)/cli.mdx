@@ -1,0 +1,127 @@
+---
+title: Command line
+description: tess sends and fetches shares from a terminal, encrypted or not
+icon: SquareTerminal
+---
+
+`tess` is the command-line client. It uploads files, a directory or a note, prints the link, and downloads shares. It can also list and delete your own shares, and it resumes an upload that was cut off.
+
+## Install
+
+On Linux and macOS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/install.sh | sh
+```
+
+The script downloads the build for your machine from the latest release, checks it against the release's `SHA256SUMS`, and puts `tess` in `~/.local/bin`. If that directory is not on your `PATH`, it tells you the line to add.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/install.sh | sh -s -- --version 0.1.0 --dir /usr/local/bin
+```
+
+`--version` picks a release and `--dir` picks where it goes. `TESS_VERSION` and `TESS_INSTALL_DIR` do the same. Run the script again to update.
+
+There are builds for Linux (x86_64 and arm64, static, so any distribution) and macOS (Intel and Apple Silicon). On Windows, download `tess-windows-x86_64.zip` from the [releases page](https://github.com/Limatura/tessera/releases).
+
+To build it yourself, with Rust 1.97 or later:
+
+```bash
+cargo install --locked --git https://github.com/Limatura/tessera tessera-cli
+```
+
+## Sign in
+
+You do not have to. Without an account, `tess send` uploads anonymously, as long as the instance allows that, and `tess get` never needs one. Signing in saves the instance, so you can leave out `--server`, and lets you upload as your account and use `tess ls` and `tess rm`.
+
+```bash
+tess login https://files.example.com
+```
+
+It shows a link and a short code. Open the link in any browser where you are signed in, check that the page shows the same code, and approve. It can be another machine; over SSH, when there is no browser to open, `tess` draws the link as a QR code so you can approve from your phone. The request lasts 10 minutes.
+
+The other two ways:
+
+- `tess login --password https://files.example.com` asks for your username or email and password, and a code from your authenticator app if you use [two-step verification](/en/docs/accounts#two-step-verification). An account that signs in only with a passkey or an external provider has no password; use the browser.
+- `tess login --with-token https://files.example.com` reads an API token from standard input, for scripts and CI. Make the token on your account page.
+
+The browser and password ways create an API token named "tessera CLI on" plus the machine's name. It may create, list and delete your shares, and never more than your account may. Revoke it from your account page to sign that machine out.
+
+The instance and token go in `~/.config/tessera/config.toml`, readable only by you. On Windows it is under your roaming app data. The saved token is only ever sent to the instance it came from: pointing `--server` at another instance sends no token.
+
+## Send
+
+```bash
+tess send report.pdf
+tess send photos/ notes.txt
+echo "the wifi password is on the fridge" | tess send -
+```
+
+Everything named in one command becomes one share. A directory sends every file under it and keeps their paths. Empty files inside a directory are left out, because a share cannot hold an empty file unless it is encrypted. `-` reads a note from standard input; a note is a share of its own, so it cannot be mixed with files.
+
+The link is printed on standard output and nothing else is, so `link=$(tess send report.pdf)` works. Progress and messages go to standard error, and progress only appears on a terminal.
+
+| Option | What it does |
+| --- | --- |
+| `--expires <HOURS>` | How many hours the share lasts |
+| `--max-uses <N>` | How many times it may be collected |
+| `--password` | Asks for a password twice, or reads `TESSERA_PASSWORD` |
+| `--encrypt` | Seals it on this machine. See [end-to-end encryption](/en/docs/encryption) |
+| `--qr` | Also draws the link as a QR code, for a phone to scan |
+| `--copy` | Also puts the link on the clipboard |
+| `--server <URL>` | The instance. Defaults to the one `tess login` saved, or `TESSERA_SERVER` |
+| `--token <TOKEN>` | An API token. Defaults to the saved one, or `TESSERA_TOKEN` |
+
+The password is never taken on the command line, where `ps` and your shell history would show it. Without `--encrypt` it is an ordinary share password. With `--encrypt` the key comes from it, so it has to be at least 12 characters.
+
+`--copy` uses the desktop clipboard when there is one. Over SSH it asks your terminal to copy instead, which works if the terminal allows it.
+
+### When an upload is cut off
+
+Run the same command again. While it sends, `tess` notes how far it got in `~/.local/state/tessera/uploads/`, and the same files to the same instance carry on from there.
+
+It starts over instead when a file has changed, or when the server has dropped the unfinished upload, which happens after `upload_session_ttl_hours` (24 by default). An encrypted send has to be resumed with the same password.
+
+<Callout type="warn" title="An interrupted encrypted send leaves its key on disk">
+  The part already uploaded is sealed with that key, so the rest needs it too. The file is readable only by you and is removed when the send finishes. Delete it yourself if you give up on the send.
+</Callout>
+
+## Fetch
+
+```bash
+tess get https://files.example.com/s/0ZPQ4M7K
+tess get 0ZPQ4M7K -o downloads/
+```
+
+A code alone works when `tess` knows the instance, from `--server` or `tess login`. Files are written to the current directory, or the one `-o` names, and their paths are printed. A note is printed to standard output.
+
+Fetching spends one of the share's collections, however many files it holds. If the share has a password, `tess` asks for it, or reads `TESSERA_PASSWORD`. An encrypted link opens with the key after `#`, so paste the whole link. If the instance is still scanning the share, `tess` waits up to five minutes.
+
+`tess get` never overwrites a file that is already there. It also keeps only the ordinary parts of each file name, so a name like `../../.bashrc` lands as `.bashrc` inside the directory you chose.
+
+## Your own shares
+
+These need you to be signed in.
+
+```bash
+tess ls
+tess rm 0ZPQ4M7K
+```
+
+`tess ls` lists your shares, newest first, with the code, the time left, the collections left and the name. `tess rm` deletes one, by its code or its link.
+
+## Shell completion
+
+`tess completions <shell>` prints a completion script. Supported shells are `bash`, `zsh`, `fish`, `elvish` and `powershell`.
+
+```bash
+tess completions zsh > ~/.zfunc/_tess
+tess completions bash > ~/.local/share/bash-completion/completions/tess
+```
+
+## Next
+
+<Cards>
+  <Card title="Agents" href="/en/docs/agents" description="Letting a program upload and hand back a link" />
+  <Card title="End-to-end encryption" href="/en/docs/encryption" description="What --encrypt protects, and from whom" />
+</Cards>
