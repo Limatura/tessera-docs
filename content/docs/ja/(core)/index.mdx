@@ -150,6 +150,33 @@ Compose の場合は `docker compose logs tessera 2>&1 | grep password` を使�
 </Step>
 </Steps>
 
+## Docker を使わずに
+
+リリースにはサーバー単体も付いています。Linux(x86_64 と arm64。静的リンクなので、どのディストリビューションでも動きます)と macOS(Intel と Apple Silicon)向けです。Windows 向けはないので、Docker を使ってください。Web の画面も組み込まれているので、このファイル一つでインスタンス全体です。
+
+```bash
+curl -fsSL https://github.com/Limatura/tessera/releases/latest/download/tessera-server-linux-x86_64.tar.gz | tar -xz
+./tessera-server
+```
+
+このまま起動すると、イメージとは三つの点が違います。
+
+- `127.0.0.1:12923` で待ち受けるので、このマシンからしかつなげません。前に[リバースプロキシ](/ja/docs/reverse-proxy)を置くか、`TESSERA_SERVER__HOST=0.0.0.0` を設定します。
+- データは、起動したディレクトリの下の `data/` に入ります。
+- ログはプレーンテキストで、管理者のパスワードは `username=admin password=…` で終わる行にあります。
+
+データを別の場所に置くには、次の二つを両方設定します。
+
+```bash
+TESSERA_SERVER__DATA_DIR=/var/lib/tessera \
+TESSERA_DATABASE__URL=sqlite:///var/lib/tessera/tessera.db \
+./tessera-server
+```
+
+<Callout type="warn" title="データベースはデータディレクトリについて行かない">
+  `TESSERA_SERVER__DATA_DIR` だけを設定すると、データベースは起動した場所の `data/tessera.db` のままです。`tessera-server reset-password` などの管理コマンドも同じ設定を読むので、同じ変数を付けて、同じディレクトリから実行してください。そうしないと、別の空のデータベースを相手にします。
+</Callout>
+
 ## /data に入るもの
 
 <Files>

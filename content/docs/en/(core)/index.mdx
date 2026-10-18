@@ -149,6 +149,33 @@ You will be blocked from everything else until you do.
 </Step>
 </Steps>
 
+## Without Docker
+
+Each release also carries the server on its own, for Linux (x86_64 and arm64, static, so any distribution) and macOS (Intel and Apple Silicon). There is none for Windows; use Docker there. The web interface is built in, so the one file is the whole instance.
+
+```bash
+curl -fsSL https://github.com/Limatura/tessera/releases/latest/download/tessera-server-linux-x86_64.tar.gz | tar -xz
+./tessera-server
+```
+
+Started like this, it differs from the image in three ways:
+
+- It listens on `127.0.0.1:12923`, so only this machine can reach it. Put a [reverse proxy](/en/docs/reverse-proxy) in front, or set `TESSERA_SERVER__HOST=0.0.0.0`.
+- The data goes in `data/` under the directory you start it from.
+- The log is plain text, and the admin password is on the line that ends `username=admin password=…`.
+
+To keep the data somewhere else, set both of these:
+
+```bash
+TESSERA_SERVER__DATA_DIR=/var/lib/tessera \
+TESSERA_DATABASE__URL=sqlite:///var/lib/tessera/tessera.db \
+./tessera-server
+```
+
+<Callout type="warn" title="The database does not follow the data directory">
+  Set only `TESSERA_SERVER__DATA_DIR` and the database stays in `data/tessera.db` under wherever you started it. The admin commands such as `tessera-server reset-password` read the same settings, so run them with the same variables, from the same directory. Otherwise they work on a different, empty database.
+</Callout>
+
 ## What ends up in /data
 
 <Files>

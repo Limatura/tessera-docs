@@ -149,6 +149,33 @@ docker logs <container> 2>&1 | grep password
 </Step>
 </Steps>
 
+## 不用 Docker
+
+每个发布版也附了单独的服务器可执行文件,有 Linux(x86_64 和 arm64,静态链接,哪个发行版都能跑)和 macOS(Intel 和 Apple Silicon)的版本。没有 Windows 版,Windows 上请用 Docker。网页界面已经编译进去了,所以这一个文件就是整台机器。
+
+```bash
+curl -fsSL https://github.com/Limatura/tessera/releases/latest/download/tessera-server-linux-x86_64.tar.gz | tar -xz
+./tessera-server
+```
+
+这样直接跑,和镜像有三个地方不一样:
+
+- 它监听 `127.0.0.1:12923`,只有这台电脑连得到。请在前面放[反向代理](/zh-CN/docs/reverse-proxy),或设 `TESSERA_SERVER__HOST=0.0.0.0`。
+- 数据放在你启动它的目录下面的 `data/`。
+- 日志是纯文本,管理员密码在结尾是 `username=admin password=…` 的那一行。
+
+要把数据放在别的地方,这两个都要设:
+
+```bash
+TESSERA_SERVER__DATA_DIR=/var/lib/tessera \
+TESSERA_DATABASE__URL=sqlite:///var/lib/tessera/tessera.db \
+./tessera-server
+```
+
+<Callout type="warn" title="数据库不会跟着数据目录走">
+  只设 `TESSERA_SERVER__DATA_DIR` 的话,数据库还是在启动位置下面的 `data/tessera.db`。`tessera-server reset-password` 这类管理命令读的是同一套设置,所以要带同样的变量、在同一个目录执行。不然它们动到的会是另一个空的数据库。
+</Callout>
+
 ## /data 里有什么
 
 <Files>
