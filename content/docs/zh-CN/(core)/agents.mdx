@@ -90,9 +90,21 @@ curl -fL https://files.example.com/s/0ZPQ4M7K/raw
 
 取件码后面带 `#…` 的链接是端对端加密的。`#` 后面是密钥,它不会发到服务器,所以 `curl` 只拿得到封好的字节。用 `tess get` 加上整条链接才打得开。
 
+## 让 agent 读 /llms.txt
+
+每台机器都会在 `/llms.txt` 描述自己,是写给语言模型看的纯 Markdown。
+
+```bash
+curl https://files.example.com/llms.txt
+```
+
+内容包括这台机器的地址、上传要不要账号、最大文件、分享默认和最多能活多久,以及有没有开端对端加密。接着说明怎么用 `curl` 和 `tess` 上传和下载,以及错误状态码的意思。它透露的东西,不会比 `/api/v1/capabilities` 给陌生人看的更多。
+
+跟 agent 说一句「上传之前,先读 `https://files.example.com/llms.txt`」,通常就够了。
+
 ## 给 agent 的说明
 
-在 agent 的 system prompt 或 `AGENTS.md` 里放类似这样的一段,通常就够了:
+不想让 agent 先去查东西的话,在它的 system prompt 或 `AGENTS.md` 里放类似这样的一段:
 
 ```md
 To give someone a file, upload it to Tessera and send them the link:

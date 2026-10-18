@@ -17,10 +17,10 @@ curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/insta
 腳本會從最新的發布版下載適合你機器的版本,用發布版附的 `SHA256SUMS` 核對過,再把 `tess` 放進 `~/.local/bin`。那個目錄不在 `PATH` 裡的話,它會告訴你要加哪一行。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/install.sh | sh -s -- --version 0.1.0 --dir /usr/local/bin
+curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/install.sh | sh -s -- --version 0.1.0-rc.2 --dir /usr/local/bin
 ```
 
-`--version` 指定版本,`--dir` 指定放哪。`TESS_VERSION` 和 `TESS_INSTALL_DIR` 效果一樣。要更新就再跑一次。
+不給 `--version` 時,它裝的是最新的正式版。要裝預發布版(例如 0.1.0-rc.2)就用 `--version` 指定;第一個正式版出來之前,只能這樣裝。`--dir` 指定放哪。`TESS_VERSION` 和 `TESS_INSTALL_DIR` 效果一樣。要更新就再跑一次。
 
 有 Linux(x86_64 和 arm64,靜態連結,哪個發行版都能跑)和 macOS(Intel 和 Apple Silicon)的版本。Windows 請到[發布頁](https://github.com/Limatura/tessera/releases)下載 `tess-windows-x86_64.zip`。
 
@@ -66,7 +66,7 @@ echo "wifi 密碼貼在冰箱上" | tess send -
 | `--expires <HOURS>` | 分享能活幾小時 |
 | `--max-uses <N>` | 能取件幾次 |
 | `--password` | 問兩次密碼,或讀 `TESSERA_PASSWORD` |
-| `--encrypt` | 在這台電腦上封好再送。見[端對端加密](/zh-TW/docs/encryption) |
+| `--encrypt` | 在這台電腦上封好再送,這台機器要有開端對端加密。見[端對端加密](/zh-TW/docs/encryption) |
 | `--qr` | 另外把連結畫成 QR code,給手機掃 |
 | `--copy` | 另外把連結放進剪貼簿 |
 | `--server <URL>` | 哪台機器。預設是 `tess login` 存下的那台,或 `TESSERA_SERVER` |

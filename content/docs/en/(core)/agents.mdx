@@ -90,9 +90,21 @@ The server answers `423` while it is still [scanning](/en/docs/scanning) a share
 
 A link with `#…` after the code is end-to-end encrypted. The part after `#` is the key, and it never reaches the server, so `curl` gets only sealed bytes. `tess get` with the whole link opens it.
 
+## Let the agent read /llms.txt
+
+Every instance describes itself at `/llms.txt`, in plain Markdown written for a language model.
+
+```bash
+curl https://files.example.com/llms.txt
+```
+
+It gives the instance's address, whether uploading needs an account, the largest file, how long shares last by default and at most, and whether end-to-end encryption is on. Then it explains how to upload and fetch with `curl` and `tess`, and what the error statuses mean. It tells a stranger nothing that `/api/v1/capabilities` does not already.
+
+Telling an agent "before uploading, read `https://files.example.com/llms.txt`" is often enough.
+
 ## A note for the agent's instructions
 
-Something like this, in the agent's system prompt or `AGENTS.md`, is usually enough:
+For an agent that should not have to look anything up, put something like this in its system prompt or `AGENTS.md`:
 
 ```md
 To give someone a file, upload it to Tessera and send them the link:

@@ -17,10 +17,10 @@ curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/insta
 The script downloads the build for your machine from the latest release, checks it against the release's `SHA256SUMS`, and puts `tess` in `~/.local/bin`. If that directory is not on your `PATH`, it tells you the line to add.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/install.sh | sh -s -- --version 0.1.0 --dir /usr/local/bin
+curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/install.sh | sh -s -- --version 0.1.0-rc.2 --dir /usr/local/bin
 ```
 
-`--version` picks a release and `--dir` picks where it goes. `TESS_VERSION` and `TESS_INSTALL_DIR` do the same. Run the script again to update.
+Without `--version` it installs the newest stable release. To install a pre-release, such as 0.1.0-rc.2, name it with `--version`; until the first stable release, that is the only way. `--dir` picks where it goes. `TESS_VERSION` and `TESS_INSTALL_DIR` do the same. Run the script again to update.
 
 There are builds for Linux (x86_64 and arm64, static, so any distribution) and macOS (Intel and Apple Silicon). On Windows, download `tess-windows-x86_64.zip` from the [releases page](https://github.com/Limatura/tessera/releases).
 
@@ -66,7 +66,7 @@ The link is printed on standard output and nothing else is, so `link=$(tess send
 | `--expires <HOURS>` | How many hours the share lasts |
 | `--max-uses <N>` | How many times it may be collected |
 | `--password` | Asks for a password twice, or reads `TESSERA_PASSWORD` |
-| `--encrypt` | Seals it on this machine. See [end-to-end encryption](/en/docs/encryption) |
+| `--encrypt` | Seals it on this machine, if the instance has end-to-end encryption on. See [end-to-end encryption](/en/docs/encryption) |
 | `--qr` | Also draws the link as a QR code, for a phone to scan |
 | `--copy` | Also puts the link on the clipboard |
 | `--server <URL>` | The instance. Defaults to the one `tess login` saved, or `TESSERA_SERVER` |

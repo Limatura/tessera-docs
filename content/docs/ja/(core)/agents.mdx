@@ -90,9 +90,21 @@ curl -fL https://files.example.com/s/0ZPQ4M7K/raw
 
 コードの後ろに `#…` が付いたリンクはエンドツーエンド暗号化されています。`#` の後ろが鍵で、サーバーには届かないので、`curl` では封をされたバイト列しか取れません。開くにはリンクを丸ごと `tess get` に渡します。
 
+## エージェントに /llms.txt を読ませる
+
+どのインスタンスも `/llms.txt` で自分を説明しています。言語モデル向けに書かれた素の Markdown です。
+
+```bash
+curl https://files.example.com/llms.txt
+```
+
+インスタンスのアドレス、アップロードにアカウントが要るか、最大のファイルサイズ、共有のデフォルトと最長の期限、エンドツーエンド暗号化が有効かが書かれています。続いて、`curl` と `tess` でのアップロードと受け取り方、エラーステータスの意味を説明します。`/api/v1/capabilities` が誰にでも見せている以上のことは書かれていません。
+
+エージェントに「アップロードの前に `https://files.example.com/llms.txt` を読んで」と伝えれば、たいてい足ります。
+
 ## エージェントへの指示
 
-エージェントのシステムプロンプトか `AGENTS.md` に、次のような一節を入れれば、たいてい足ります。
+何も調べさせたくない場合は、エージェントのシステムプロンプトか `AGENTS.md` に次のような一節を入れます。
 
 ```md
 To give someone a file, upload it to Tessera and send them the link:
