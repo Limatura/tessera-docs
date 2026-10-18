@@ -17,10 +17,10 @@ curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/insta
 脚本会从最新的发布版下载适合你机器的版本,用发布版附带的 `SHA256SUMS` 校验过,再把 `tess` 放进 `~/.local/bin`。那个目录不在 `PATH` 里的话,它会告诉你要加哪一行。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/install.sh | sh -s -- --version 0.1.0-rc.2 --dir /usr/local/bin
+curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/install.sh | sh -s -- --version 0.1.0 --dir /usr/local/bin
 ```
 
-不给 `--version` 时,它装的是最新的正式版。要装预发布版(例如 0.1.0-rc.2)就用 `--version` 指定;第一个正式版出来之前,只能这样装。`--dir` 指定放哪。`TESS_VERSION` 和 `TESS_INSTALL_DIR` 效果一样。要更新就再跑一次。
+`--version` 会改装指定的版本,而不是最新的正式版,预发布版也可以。`--dir` 指定放哪。`TESS_VERSION` 和 `TESS_INSTALL_DIR` 效果一样。要更新就再跑一次。
 
 有 Linux(x86_64 和 arm64,静态链接,哪个发行版都能跑)和 macOS(Intel 和 Apple Silicon)的版本。Windows 请到[发布页](https://github.com/Limatura/tessera/releases)下载 `tess-windows-x86_64.zip`。
 

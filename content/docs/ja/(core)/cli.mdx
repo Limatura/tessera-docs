@@ -17,10 +17,10 @@ curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/insta
 スクリプトは最新のリリースからマシンに合ったビルドをダウンロードし、リリースの `SHA256SUMS` と照合してから `tess` を `~/.local/bin` に置きます。そのディレクトリが `PATH` に入っていなければ、追加する行を表示します。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/install.sh | sh -s -- --version 0.1.0-rc.2 --dir /usr/local/bin
+curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/install.sh | sh -s -- --version 0.1.0 --dir /usr/local/bin
 ```
 
-`--version` を省くと、最新の安定版を入れます。0.1.0-rc.2 のようなプレリリースは `--version` で指定します。最初の安定版が出るまでは、この方法しかありません。`--dir` で置き場所を選びます。`TESS_VERSION` と `TESS_INSTALL_DIR` でも同じです。更新するときはもう一度実行します。
+`--version` を付けると、最新の安定版の代わりにその版を入れます。プレリリースも指定できます。`--dir` で置き場所を選びます。`TESS_VERSION` と `TESS_INSTALL_DIR` でも同じです。更新するときはもう一度実行します。
 
 ビルドは Linux(x86_64 と arm64。静的リンクなので、どのディストリビューションでも動きます)と macOS(Intel と Apple Silicon)にあります。Windows では[リリースページ](https://github.com/Limatura/tessera/releases)から `tess-windows-x86_64.zip` をダウンロードしてください。
 

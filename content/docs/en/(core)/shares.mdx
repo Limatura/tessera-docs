@@ -29,7 +29,7 @@ A link share with no password and no limit sends visitors straight on. One limit
 
 Any of them can be [end-to-end encrypted](/en/docs/encryption) except a link, which the server has to be able to read to redirect.
 
-From a terminal, [`tess`](/en/docs/cli) or plain [`curl -T`](/en/docs/agents#upload-with-curl) uploads the same way.
+From a terminal, [`tess`](/en/docs/cli) or plain [`curl -T`](/en/docs/agents#upload-with-curl) uploads the same way. From any web page, the [browser extension](/en/docs/extension) uploads what you right-click.
 
 ### Several files, and folders
 
@@ -77,6 +77,8 @@ An unknown code and a malformed one look the same from outside. Telling them apa
 ## Collecting
 
 Opening `/s/<code>` shows what the share is without spending anything. A link preview, a browser prefetch or a mail scanner following the URL cannot destroy a one-time share.
+
+In a browser, the page also shows a text share, or a share of one image or video, and showing it is a collection. A share with one collection left waits for a click instead, so opening a burn-after-reading link never spends it. Images are PNG, JPEG, GIF, WebP, AVIF, BMP and SVG. Videos are MP4, M4V, WebM, MOV, MKV and OGV. A video stays covered until someone presses play, and one the browser cannot decode offers the download instead.
 
 Collecting it is what costs one of its permitted retrievals, and the count is charged once for the whole transfer. A download is not one request. A resumed transfer and a retry after a dropped connection are more, and none of that costs extra.
 

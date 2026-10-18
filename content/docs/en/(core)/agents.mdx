@@ -54,7 +54,7 @@ The answer is one line, `error: <message>`, with the HTTP status. `--fail-with-b
 
 | Status | Meaning | What to do |
 | --- | --- | --- |
-| `401` | This instance needs an account to upload, or the token is not valid | Send a token |
+| `401` | This instance needs an account to upload (the message says `only accepts uploads from signed-in accounts`), or the token is not valid | Send a valid token |
 | `403` | The token's account may not upload | Use another account |
 | `413` | The file is larger than this instance allows | Do not retry |
 | `507` | The instance, or the account's quota, has no room left | Do not retry |

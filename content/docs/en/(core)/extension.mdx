@@ -1,0 +1,77 @@
+---
+title: Browser extension
+description: Upload an image, a link or selected text from the right-click menu
+icon: Puzzle
+---
+
+The extension uploads whatever you right-click to your instance and copies the link. It runs in Chrome, Edge, Brave and other Chromium browsers, and in Firefox 128 or later.
+
+## Install
+
+It is not in the browser stores. Download it from the [releases page](https://github.com/Limatura/tessera/releases) and unzip it: `tessera-extension-chrome.zip` for Chromium browsers, `tessera-extension-firefox.zip` for Firefox.
+
+- **Chromium browsers**: open `chrome://extensions`, turn on developer mode, choose **Load unpacked** and pick the unzipped folder.
+- **Firefox**: open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on** and pick `manifest.json` in the unzipped folder. Mozilla has not signed this build, so Firefox removes it when it restarts.
+
+To update, unzip the new version over the old folder and reload the extension on the same page.
+
+## Connect it to your instance
+
+Open the extension's settings, type the instance's address and choose **Save and connect**. The browser asks whether the extension may reach that address. It asks for no other site. Plain `http` works, for an instance on a LAN or Tailscale.
+
+You do not have to sign in. Without an account, uploads are anonymous, as long as the instance allows that.
+
+**Sign in** opens the instance's own sign-in page in a new tab, so passwords, authenticator codes, passkeys and other providers all work. Once you are in, the extension creates an API token there and closes the tab. The token is named "Browser extension" plus the browser and the date. It may upload, list and delete your shares, and never more than your account may. Your account needs permission to manage API tokens for this. If it does not have that, ask the administrator, or paste a token instead.
+
+**Use an API key instead** takes a token you created on the site. The extension checks it with the instance before saving it.
+
+Signing out revokes the token the extension created, if the browser is still signed in to the site. Otherwise the token keeps working until you revoke it on the site's API keys page, and the extension tells you so. A pasted token is never revoked for you.
+
+## The right-click menu
+
+Right-click and choose **Upload to Tessera**. What it offers depends on what you clicked.
+
+| Clicked on | Choices |
+| --- | --- |
+| An image, a video or audio | Upload that file |
+| A link | Upload the file it points to, or share the link itself |
+| Selected text | Upload it as a note |
+| The page | Share the page's address |
+
+Sharing a link or an address makes a [link share](/en/docs/shares#sending-something), which sends people on to that address.
+
+When the upload finishes, the link is on the clipboard and a notification says so. Click the notification to open the share.
+
+Selected code keeps its language, so the share page highlights it. The extension takes the language from the code block first, then from the file name in the page's address, and guesses only last. Ordinary text is never taken for code.
+
+### When a file will not come
+
+The extension fetches the file itself first, with your cookies, so an image behind a sign-in still comes through. If the file's server refuses, the page that shows it fetches it instead, up to 64 MiB. Anything larger from such a site needs **Fetch media from any site** in the settings, which asks the browser for access to every site.
+
+Streamed video has no whole file to fetch, so it cannot be uploaded.
+
+## Upload defaults
+
+The settings decide what a right-click upload, or a note typed in the popup, gets.
+
+- **End-to-end encryption**: off at first, and shown only when the instance offers it. The file is sealed in the browser and the key goes after `#` in the link. See [end-to-end encryption](/en/docs/encryption). A link share is never sealed, because the server has to read the address to send people on.
+- **Keep for**: how long the share lasts. The instance's default until you pick one, and never past the instance's limit.
+- **Burn after reading**: off at first. The share stops working after it is first collected.
+- Copying the link when an upload finishes, and a notification when one finishes or fails. Both are on at first.
+
+If the instance refuses one of these, the share is deleted, not left with settings you did not ask for. Uploads made on the site use the site's own choices, not these.
+
+## The popup
+
+Click the extension's icon to see what is uploading, which you can cancel, and your own shares, which you can delete. A box there uploads a short note. **Upload files** opens the site's upload page, which is where you pick files from disk. Buttons also go to the site, and to its admin panel if your account may use it.
+
+<Callout type="warn" title="Only the browser that uploaded an encrypted share can give its link">
+  The key never reaches the instance. Another browser lists the share but cannot rebuild the full link.
+</Callout>
+
+## Next
+
+<Cards>
+  <Card title="Command line" href="/en/docs/cli" description="tess sends and fetches shares from a terminal" />
+  <Card title="Shares" href="/en/docs/shares" description="Retrieval codes, use counts and expiry" />
+</Cards>

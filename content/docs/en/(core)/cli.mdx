@@ -17,10 +17,10 @@ curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/insta
 The script downloads the build for your machine from the latest release, checks it against the release's `SHA256SUMS`, and puts `tess` in `~/.local/bin`. If that directory is not on your `PATH`, it tells you the line to add.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/install.sh | sh -s -- --version 0.1.0-rc.2 --dir /usr/local/bin
+curl -fsSL https://raw.githubusercontent.com/Limatura/tessera/main/scripts/install.sh | sh -s -- --version 0.1.0 --dir /usr/local/bin
 ```
 
-Without `--version` it installs the newest stable release. To install a pre-release, such as 0.1.0-rc.2, name it with `--version`; until the first stable release, that is the only way. `--dir` picks where it goes. `TESS_VERSION` and `TESS_INSTALL_DIR` do the same. Run the script again to update.
+`--version` installs a particular release instead of the newest stable one, pre-releases included. `--dir` picks where it goes. `TESS_VERSION` and `TESS_INSTALL_DIR` do the same. Run the script again to update.
 
 There are builds for Linux (x86_64 and arm64, static, so any distribution) and macOS (Intel and Apple Silicon). On Windows, download `tess-windows-x86_64.zip` from the [releases page](https://github.com/Limatura/tessera/releases).
 

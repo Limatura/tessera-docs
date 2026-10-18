@@ -8,6 +8,7 @@
     "shares",
     "encryption",
     "cli",
+    "extension",
     "agents",
     "configuration",
     "storage",
