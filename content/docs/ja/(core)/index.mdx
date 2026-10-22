@@ -186,10 +186,13 @@ TESSERA_DATABASE__URL=sqlite:///var/lib/tessera/tessera.db \
     <Folder name="blobs">
       <File name="01K1ZQK9V8…" />
     </Folder>
+    <Folder name="logs">
+      <File name="2026-10-22.jsonl" />
+    </Folder>
   </Folder>
 </Files>
 
-`blobs` には、ほかの保存先を追加するまでアップロードされた中身が入ります。`secret.key` はデータベースに保存する認証情報を暗号化します。ストレージバックエンドのアドレス、メールのパスワード、外部ログインのシークレットなどです。
+`blobs` には、ほかの保存先を追加するまでアップロードされた中身が入ります。`secret.key` はデータベースに保存する認証情報を暗号化します。ストレージバックエンドのアドレス、メールのパスワード、外部ログインのシークレットなどです。`logs` には[サーバーのログ](/ja/docs/administration#サーバーのログ)の直近数日分が入ります。
 
 <Callout type="error" title="secret.key はデータベースと一緒にバックアップする">
   これなしで復元したデータベースも開きはしますが、封印された認証情報はすべて読めなくなり、入力し直しになります。[設定](/ja/docs/configuration#認証情報を封印する鍵)を見てください。

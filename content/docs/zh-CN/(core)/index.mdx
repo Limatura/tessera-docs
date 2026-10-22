@@ -185,10 +185,13 @@ TESSERA_DATABASE__URL=sqlite:///var/lib/tessera/tessera.db \
     <Folder name="blobs">
       <File name="01K1ZQK9V8…" />
     </Folder>
+    <Folder name="logs">
+      <File name="2026-10-22.jsonl" />
+    </Folder>
   </Folder>
 </Files>
 
-`blobs` 是上传的文件本体,直到你加了别的地方放文件为止。`secret.key` 用来加密存在数据库里的凭证:存储 backend 的地址、发信密码、第三方登录的 secret。
+`blobs` 是上传的文件本体,直到你加了别的地方放文件为止。`secret.key` 用来加密存在数据库里的凭证:存储 backend 的地址、发信密码、第三方登录的 secret。`logs` 是最近几天的[服务器日志](/zh-CN/docs/administration#服务器日志)。
 
 <Callout type="error" title="secret.key 要跟数据库一起备份">
   没有它还原回来的数据库照样开得起来,但里面每一个封起来的凭证都读不出来,要全部重新输入。见[配置](/zh-CN/docs/configuration#封住凭证的那把密钥)。

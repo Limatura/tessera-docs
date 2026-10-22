@@ -4,7 +4,7 @@ description: tess sends and fetches shares from a terminal, encrypted or not
 icon: SquareTerminal
 ---
 
-`tess` is the command-line client. It uploads files, a directory or a note, prints the link, and downloads shares. It can also list and delete your own shares, and it resumes an upload that was cut off.
+`tess` is the command-line client. It uploads files, a directory or a note, prints the link, and downloads shares. It can also list and delete your own shares, and it resumes an upload that was cut off. Run on its own, it opens a [full-screen view](#the-full-screen-view) for picking files and managing your shares.
 
 ## Install
 
@@ -38,7 +38,9 @@ You do not have to. Without an account, `tess send` uploads anonymously, as long
 tess login https://files.example.com
 ```
 
-It shows a link and a short code. Open the link in any browser where you are signed in, check that the page shows the same code, and approve. It can be another machine; over SSH, when there is no browser to open, `tess` draws the link as a QR code so you can approve from your phone. The request lasts 10 minutes.
+It shows a link, a short code and the link as a QR code. Open the link in any browser where you are signed in, check that the page shows the same code, and approve. It can be another machine, or your phone through the QR code, which helps over SSH when there is no browser to open. The request lasts 10 minutes.
+
+An address without `https://`, such as `files.example.com`, means HTTPS. The same goes for `--server`.
 
 The other two ways:
 
@@ -108,7 +110,68 @@ tess ls
 tess rm 0ZPQ4M7K
 ```
 
-`tess ls` lists your shares, newest first, with the code, the time left, the collections left and the name. `tess rm` deletes one, by its code or its link.
+`tess ls` lists your shares, newest first, with the code, the time left, the collections left and the name. A link share is named `(link)`. `tess rm` deletes one, by its code or its link.
+
+## The full-screen view
+
+Run `tess` on its own in a terminal. It opens the current folder full-screen, for picking files without typing paths, sending them, and managing your shares. When its input or output is not a terminal, `tess` prints the help instead.
+
+The view uses the instance and token that `tess login` saved. It does not read `--server` or the `TESSERA_` variables. With no saved instance it starts on a welcome screen, where you can sign in. Browsing and finding files work without an account.
+
+### Files and shares
+
+The **Files** tab lists the folder. Mark files with Space, across as many folders as you like, and send them with Ctrl-S. With nothing marked, Ctrl-S sends the file under the cursor. Typing filters the list. Ctrl-F finds any file under the folder by a few letters of its path, and skips what `.gitignore` skips.
+
+The **Shares** tab lists your own shares, with the expiry as a date and time on this machine's clock. Enter shows one in full, with its link and a QR code. An encrypted share's link is copied without its key, and the view says so.
+
+Pasting a share link downloads it into the folder you are in. Ctrl-N writes a note or makes a link share.
+
+| To | Keys | With vim keys |
+| --- | --- | --- |
+| Move | ↑ ↓, PgUp PgDn, Home End | j k, Ctrl-F Ctrl-B, g G |
+| Go into a folder, or up one | → or Enter, ← or Backspace | l, h |
+| Go back and forward through visited folders | Alt-← Alt-→ | H L |
+| Mark one, mark all | Space, Ctrl-A | Space, a |
+| Filter, find, go to a path | type, Ctrl-F, Ctrl-L | /, f, : |
+| Send | Ctrl-S | s |
+| Write a note or make a link share | Ctrl-N | n |
+| Download from a link | Ctrl-G | p |
+| Copy a share's link, delete it | Ctrl-Y, Del | y, d |
+| Settings, transfers, order | F3, F4, F6 | F3, F4, o |
+| Switch tab | Tab | Tab |
+| See every key | F1 | ? |
+| Quit | Ctrl-Q | q |
+
+The mouse works too. Click a row to pick it, click its box to mark it, double-click to open a folder or send a file, and right-click for a menu. Dragging selects text and copies it when you let go. Without a desktop clipboard, the copy goes through the terminal, so it works over SSH if the terminal allows it. F2 turns the mouse off for the session, and the terminal does its own selection again.
+
+### Sending
+
+The send form offers what `tess send` does: encryption, a password, how long the share lasts and how many downloads it allows. It follows the instance. It hides encryption where the instance does not offer it, hides lifetimes longer than the instance allows, and asks you to sign in where uploads need an account. Ctrl-S sends from any field.
+
+Sends and downloads run in the background, several at once. A dialog follows each one. **Hide** leaves it running, and F4 lists everything under way, with a way to stop each. When a send ends, its link and QR code show. Sending the same files again after a stop carries on from where it got.
+
+QR codes are drawn as pictures in terminals that can show them, such as kitty, Ghostty, WezTerm, iTerm2, Windows Terminal and foot, and in half blocks elsewhere, inside tmux and screen included. VS Code's terminal shows pictures only with `terminal.integrated.enableImages` on.
+
+### Settings
+
+F3 changes the keys, the mouse, whether dotfiles show, the order and the colour. Each change is saved at once to the `[ui]` table of the config file.
+
+```toml
+[ui]
+keys = "vim"        # or "standard"
+mouse = true
+show_hidden = false
+sort = "modified"   # "name", "modified" or "size"
+accent = "teal"     # violet, rose, orange, amber, green, teal or blue
+
+[ui.bindings]
+send = "ctrl-s"
+up = ["k", "up"]
+```
+
+`[ui.bindings]` changes single actions. F1 lists each action's name. A key given there is taken away from whatever action had it before. An action, a key or any other entry in `[ui]` that `tess` does not know stops it at launch with an error.
+
+Without `accent`, the view takes the colour you picked on the site, then the instance's own.
 
 ## Shell completion
 

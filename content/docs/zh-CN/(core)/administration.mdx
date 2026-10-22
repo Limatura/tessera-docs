@@ -25,6 +25,7 @@ icon: ShieldCheck
 | `invites:read`、`invites:create`、`invites:delete` | 邀请码 |
 | `roles:read`、`roles:write` | 角色和谁持有 |
 | `stats:read` | 实例统计 |
+| `logs:read` | 服务器日志 |
 
 内置四个角色:`owner` 全部都有,`admin` 除了 `users:delete`、`shares:delete:any`、`roles:write` 以外都有,`member` 有那四个管自己东西的,`guest` 一个都没有。
 
@@ -96,6 +97,30 @@ tessera-server invite -n 5 -d 7 --note "book club"
 上传者读不到。
 
 一行里有什么、留多久,见[你的数据在哪里](/zh-CN/docs/your-data)。
+
+## 服务器日志
+
+除了打印日志,服务器也会在数据目录下面的 `logs/` 留一份。每个 UTC 日一个 JSON Lines 文件,只有服务器自己的用户读得到。保留三天,含今天。
+
+| 设置 | 默认 | |
+|---|---|---|
+| `logs.retention_days` | 3 | 保留几天,1 到 90 |
+| `logs.min_level` | `trace` | 写进文件的最低级别 |
+
+`logs.min_level` 只能比 `telemetry.filter` 更严,不能更宽。`telemetry.filter` 决定屏幕和文件都会收到什么,默认是 `info`。这两个 `logs.` 设置[和其他设置一样改](/zh-CN/docs/configuration#其他的怎么改),只是管理后台还没有它们的字段。
+
+管理后台也还没有读日志的页面。有 `logs:read` 的账号(`owner` 和 `admin` 都有)要在登录状态下通过 API 读。API 令牌会被拒绝。
+
+| 端点 | 给你什么 |
+|---|---|
+| `GET /api/v1/admin/logs` | 一页日志,新的在前,可以按时间、最低级别或文字筛选 |
+| `GET /api/v1/admin/logs/stream` | 写进来的新日志,用 server-sent events 实时发送 |
+| `GET /api/v1/admin/logs/files` | 保留中的日子和各自的大小 |
+| `GET /api/v1/admin/logs/files/{date}` | 某一天的文件 |
+
+请求是用路由记录的,例如 `/s/{code}`,所以取件码不会进日志。名称像密码、secret、令牌或 cookie 的字段会写成 `[redacted]`。账号和分享的 ID 会出现,所以读日志要另外的权限。
+
+文件写不进去时,服务器会在自己的输出上说一次,然后照常运行。没有任何东西会等这个文件。
 
 ## 存储 backend
 

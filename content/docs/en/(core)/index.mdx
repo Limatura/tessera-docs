@@ -185,10 +185,13 @@ TESSERA_DATABASE__URL=sqlite:///var/lib/tessera/tessera.db \
     <Folder name="blobs">
       <File name="01K1ZQK9V8…" />
     </Folder>
+    <Folder name="logs">
+      <File name="2026-10-22.jsonl" />
+    </Folder>
   </Folder>
 </Files>
 
-`blobs` holds the uploaded content until you add somewhere else to keep it. `secret.key` encrypts the credentials stored in the database: storage backend addresses, the mail password, sign-in providers' secrets.
+`blobs` holds the uploaded content until you add somewhere else to keep it. `secret.key` encrypts the credentials stored in the database: storage backend addresses, the mail password, sign-in providers' secrets. `logs` holds the last few days of [the server's log](/en/docs/administration#the-server-log).
 
 <Callout type="error" title="Back up secret.key with the database">
   A database restored without it still opens, but every sealed credential in it

@@ -25,6 +25,7 @@ icon: ShieldCheck
 | `invites:read`、`invites:create`、`invites:delete` | 招待コード |
 | `roles:read`、`roles:write` | ロールと、誰がそれを持つか |
 | `stats:read` | インスタンスの数値 |
+| `logs:read` | サーバーのログ |
 
 インスタンスには四つのロールが付いています。`owner` はすべて、`admin` は `users:delete`、`shares:delete:any`、`roles:write` 以外のすべて、`member` は自分のことをする四つの権限を持ち、`guest` は何も持ちません。
 
@@ -96,6 +97,30 @@ tessera-server invite -n 5 -d 7 --note "book club"
 アップロードした人は読めません。
 
 一行に何が入り、どれだけ残るかは[あなたのデータの置き場所](/ja/docs/your-data)を見てください。
+
+## サーバーのログ
+
+サーバーはログを出力するほか、データディレクトリの下の `logs/` にも写しを残します。UTC の 1 日ごとに JSON Lines のファイルが一つで、サーバー自身のユーザーしか読めません。今日を含めて 3 日分を残します。
+
+| 設定 | デフォルト | |
+|---|---|---|
+| `logs.retention_days` | 3 | 残す日数。1 から 90 |
+| `logs.min_level` | `trace` | ファイルに書く最も低いレベル |
+
+`logs.min_level` は `telemetry.filter` を狭めることしかできません。`telemetry.filter` は画面とファイルの両方に何を出すかを決め、デフォルトは `info` です。`logs.` の二つは[ほかの設定と同じように変えられます](/ja/docs/configuration#それ以外を変える)が、管理画面にはまだ入力欄がありません。
+
+ログを読むページも、管理画面にはまだありません。`logs:read` を持つアカウント(`owner` と `admin` が持っています)が、サインインした状態で API から読みます。API トークンでは読めません。
+
+| エンドポイント | 返すもの |
+|---|---|
+| `GET /api/v1/admin/logs` | 新しい順の行を 1 ページ分。時刻、最低レベル、文字列で絞り込めます |
+| `GET /api/v1/admin/logs/stream` | 書かれた行をその都度、Server-Sent Events で |
+| `GET /api/v1/admin/logs/files` | 残っている日とその大きさ |
+| `GET /api/v1/admin/logs/files/{date}` | 1 日分のファイル |
+
+リクエストは `/s/{code}` のようなルートで記録するので、受け取りコードはログに残りません。パスワード、シークレット、トークン、cookie のような名前のフィールドは `[redacted]` と書かれます。アカウントと共有の ID は出るので、ログを読むには専用の権限が要ります。
+
+ファイルに書けないときは、サーバーが自分の出力に一度そう書き、そのまま動き続けます。ファイルを待つものはありません。
 
 ## ストレージバックエンド
 

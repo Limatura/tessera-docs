@@ -25,6 +25,7 @@ A permission is a `resource:verb` string. Ones that reach beyond the holder's ow
 | `invites:read`, `invites:create`, `invites:delete` | Invite codes |
 | `roles:read`, `roles:write` | Roles and who holds them |
 | `stats:read` | The instance counts |
+| `logs:read` | The server log |
 
 Four roles ship with the instance: `owner` holds everything, `admin` holds everything except `users:delete`, `shares:delete:any` and `roles:write`, `member` holds the four self-service permissions, and `guest` holds none.
 
@@ -96,6 +97,30 @@ See [configuration](/en/docs/configuration) for which settings can only come fro
 Uploaders cannot read it.
 
 See [where your data lives](/en/docs/your-data) for what a row holds and how long it stays.
+
+## The server log
+
+Besides printing its log, the server keeps a copy in `logs/` under the data directory. Each UTC day gets one file of JSON lines, readable only by the server's own user. Three days are kept, today included.
+
+| Setting | Default | |
+|---|---|---|
+| `logs.retention_days` | 3 | Days kept, 1 to 90 |
+| `logs.min_level` | `trace` | The lowest level written to the file |
+
+`logs.min_level` can only narrow `telemetry.filter`, which decides what reaches both the screen and the file and is `info` by default. Both `logs.` settings [change like the others](/en/docs/configuration#changing-the-rest), though the panel has no form for them yet.
+
+The panel has no page for reading it yet either. An account holding `logs:read`, which `owner` and `admin` have, reads it through the API while signed in. API tokens are refused.
+
+| Endpoint | Gives |
+|---|---|
+| `GET /api/v1/admin/logs` | A page of lines, newest first, filtered by time, lowest level or text |
+| `GET /api/v1/admin/logs/stream` | New lines as they are written, as server-sent events |
+| `GET /api/v1/admin/logs/files` | The days kept, with their sizes |
+| `GET /api/v1/admin/logs/files/{date}` | One day's file |
+
+A request is logged by its route, such as `/s/{code}`, so share codes stay out of the log. Fields named like a password, secret, token or cookie are written as `[redacted]`. Account and share IDs do appear, which is why reading the log takes its own permission.
+
+If the file cannot be written, the server says so once on its own output and carries on. Nothing waits for the file.
 
 ## Storage backends
 
