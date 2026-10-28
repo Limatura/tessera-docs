@@ -68,6 +68,18 @@ export const Hero = ({
             </li>
           ))}
         </ul>
+        <a
+          href="https://postyourstartup.co/startup/tessera-1?ref=badge"
+          target="_blank"
+          style={{ display: "none" }}
+        >
+          <img
+            src="https://postyourstartup.co/api/badge/tessera-1?theme=dark"
+            alt="Featured on PostYourStartup"
+            width="212"
+            height="55"
+          />
+        </a>
       </div>
       <div className="reveal-now relative w-full [animation-delay:200ms]">
         {/* Glass shows what is behind it, so give it something to show. */}
